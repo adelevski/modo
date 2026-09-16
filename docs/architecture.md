@@ -116,6 +116,38 @@ contract. Runtime road downloads are not interim coverage.
 An isolated [browser-routing experiment](../experiments/browser-routing/README.md)
 tests exact static Worker delivery without changing the production design.
 
+### Exhaustive-search scale limit
+
+Exhaustive NetworkX search is the exact correctness oracle, not a serving
+architecture. Measured on 2026-08-25 with an Apple M2, 8 GB RAM, macOS 26.6.1,
+Python 3.12.2 and the local Chicago OSM graph, running each size in a fresh
+process:
+
+| Scale | Vertices | Edges | Four-search median |
+| ---: | ---: | ---: | ---: |
+| 0.25 | 4,485 | 12,435 | 0.051 s |
+| 0.50 | 17,613 | 48,550 | 0.382 s |
+| 0.75 | 39,567 | 106,961 | 0.861 s |
+| 1.00 | 63,138 | 168,802 | 1.459 s |
+
+Loading the 63,413-vertex GraphML graph and solving the four-origin minimax case
+peaked at 1,449,771,008 bytes resident and took 12.60 seconds end to end. Nested
+NetworkX subgraph views were rejected from the harness because their proxy
+overhead materially distorted search timings.
+
+This is why a tiled routing engine owns lower-48 coverage: the oracle stays
+simple and exact for validation, and the engine places graph-heavy work in
+native code. Do not write a custom routing engine. Reconsider native components
+only after profiling candidate generation or scoring outside the router. OSRM
+MLD remains a useful static comparison because it partitions the graph and can
+re-customize edge weights, while its contraction-hierarchy path suits weights
+that do not need live updates.
+
+These measurements predate this repository's history, which begins at the
+initial public source commit. They were recorded in an earlier
+`docs/road-architecture.md`; those original commits are retained in a private
+local archive.
+
 ## Free-first rollout
 
 Keep the current regional Python service as the deployed baseline. Render's free

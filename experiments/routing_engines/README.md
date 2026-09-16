@@ -22,13 +22,17 @@ not claim live or historical traffic behavior.
 
 ## Run
 
-Use the isolated Python environment that contains `pyvalhalla`. From the modo
-repository root:
+This benchmark needs a locally built Valhalla graph, its generated config, and a
+Python environment containing `pyvalhalla`. None of them are retained in this
+repository, and the measurements below are the durable record of the run. Build
+them locally first, then substitute your own paths for `BENCHMARK_DIR`.
+
+From the modo repository root:
 
 ```sh
-../.benchmarks/routing-engine/.venv/bin/python \
+"$BENCHMARK_DIR"/.venv/bin/python \
   experiments/routing_engines/benchmark.py \
-  --config ../.benchmarks/routing-engine/valhalla.json \
+  --config "$BENCHMARK_DIR"/valhalla.json \
   --cases experiments/routing_engines/cases.example.json \
   --warm-runs 5 \
   --size graph=83517440 \
