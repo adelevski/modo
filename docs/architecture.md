@@ -144,9 +144,8 @@ re-customize edge weights, while its contraction-hierarchy path suits weights
 that do not need live updates.
 
 These measurements predate this repository's history, which begins at the
-initial public source commit. They were recorded in an earlier
-`docs/road-architecture.md`; those original commits are retained in a private
-local archive.
+initial public source commit. They are reproduced here because the experimental
+branch that produced them is not part of the published record.
 
 ## Free-first rollout
 
