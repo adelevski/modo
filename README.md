@@ -10,7 +10,7 @@ points are neither venue recommendations nor assurances of a safe stopping
 place. See the [model](docs/model.md), [architecture](docs/architecture.md), and
 [service policy](SERVICE.md) for calculation, data, and privacy details.
 
-## Run the interface locally
+## Run
 
 Python 3.11 or newer is required.
 
