@@ -3,7 +3,7 @@ services:
     name: modo
     runtime: python
     plan: free
-    buildCommand: pip install uv==0.12.6 && uv sync --extra app --locked --no-dev && .venv/bin/python scripts/fetch_snapshot.py
+    buildCommand: pip install uv==0.12.15 && uv sync --extra app --locked --no-dev && .venv/bin/python scripts/fetch_snapshot.py
     startCommand: .venv/bin/gunicorn --preload modo.web:application
     healthCheckPath: /health
     envVars:
