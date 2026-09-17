@@ -12,10 +12,10 @@ place. See the [model](docs/model.md), [architecture](docs/architecture.md), and
 
 ## Run
 
-Python 3.11 or newer is required.
+Python 3.12 or newer is required.
 
 ```sh
-python -m pip install uv==0.12.6
+python -m pip install uv==0.12.15
 uv sync --extra app --extra test --locked
 uv run --locked python scripts/fetch_snapshot.py
 uv run --locked gunicorn modo.web:application
@@ -60,7 +60,7 @@ uv run --locked python scripts/validate_snapshot.py
 ```
 
 Tests use synthetic fixtures and require no geographic data or external services.
-The browser experiment also requires Node.js 22 or newer.
+The browser experiment also requires Node.js 24 or newer.
 
 ## Icon
 
@@ -82,7 +82,7 @@ website project image when updating it there.
 modo is a snowball project licensed under the [MIT License](LICENSE).
 The road snapshot is separately licensed under the Open Database License, and
 the local Leaflet assets remain BSD-2-Clause. See
-[data notes](data/README.md), [NOTICE](NOTICE),
+[data notes](data/README.md), [third-party notices](THIRD-PARTY-NOTICES.md),
 [contribution terms](CONTRIBUTING.md), and the
 [Leaflet license](src/modo/static/LEAFLET-LICENSE.txt).
 

@@ -16,7 +16,7 @@ APIs may retain other objectives, and experiments are not production.
 
 ## Development and verification
 
-- Use Python 3.11+ and the checked-in `uv.lock`; install with
+- Use Python 3.12+ and the checked-in `uv.lock`; install with
   `uv sync --extra app --extra test --locked`.
 - Before shipping, run `uv run --locked ruff check .`,
   `uv run --locked ruff format --check .`,
@@ -52,7 +52,7 @@ APIs may retain other objectives, and experiments are not production.
 - Write `modo` and `snowball` in lowercase. Credit software to snowball; Nas
   Delevski is its founder. Do not change product direction by assumption.
 - Original software is MIT. Preserve the separate road-data and Leaflet
-  notices; `LICENSE`, `NOTICE` and `CONTRIBUTING.md` are authoritative.
+  notices; `LICENSE`, `THIRD-PARTY-NOTICES.md` and `CONTRIBUTING.md` are authoritative.
 - Do not add AI-builder labels or production credits to public copy.
 - Use regular hyphens instead of em dashes. Keep public copy terse and honest.
 - `CLAUDE.md` imports this file. Keep operational detail in docs rather than

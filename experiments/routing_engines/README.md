@@ -140,5 +140,5 @@ The tests use a fake Actor, clock, and RSS sampler. They need neither
 
 The example road data is derived from OpenStreetMap and remains subject to the
 Open Database License and OpenStreetMap attribution requirements. Valhalla is
-MIT-licensed. See the project-level `NOTICE` and data documentation before
+MIT-licensed. See the project-level `THIRD-PARTY-NOTICES.md` and data documentation before
 publishing derived results or a service.
