@@ -5,7 +5,7 @@ scope before opening a pull request. Keep each change small, documented, and
 covered by the checks in [README.md](README.md).
 
 Pull requests should explain the problem, the important decisions, and how the
-result was verified. Final product direction remains with snowball's founder.
+result was verified. Final product direction remains with the maintainer.
 
 ## Contribution terms
 

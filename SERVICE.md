@@ -1,6 +1,6 @@
 # Hosted service
 
-This policy applies to any official snowball deployment of modo. Operators of
+This policy applies to any official deployment of modo. Operators of
 independent deployments set their own service policies.
 
 ## Behavior
@@ -48,7 +48,7 @@ intentionally disrupt it, evade its limits, send automated bulk traffic, or
 use it in violation of law or another person's rights. Report good-faith
 security research privately and avoid harm.
 
-snowball may reject, limit, or block abusive traffic. The service is provided
+The operator may reject, limit, or block abusive traffic. The service is provided
 without a guarantee of availability.
 
 Report security issues through GitHub's private vulnerability reporting form

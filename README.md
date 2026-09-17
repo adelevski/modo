@@ -74,16 +74,15 @@ sips -z 32 32 docs/icon.png --out src/modo/static/favicon.png
 ```
 
 The 180px image serves both the header and saved home-screen shortcut. The
-32px image is the favicon. Copy the full-resolution source to snowball's
+32px image is the favicon. Copy the full-resolution source to the catalog's
 website project image when updating it there.
 
 ## License
 
-modo is a snowball project licensed under the [MIT License](LICENSE).
+modo is licensed under the [MIT License](LICENSE).
 The road snapshot is separately licensed under the Open Database License, and
 the local Leaflet assets remain BSD-2-Clause. See
 [data notes](data/README.md), [third-party notices](THIRD-PARTY-NOTICES.md),
 [contribution terms](CONTRIBUTING.md), and the
 [Leaflet license](src/modo/static/LEAFLET-LICENSE.txt).
 
-[Operations](https://snowball-projects.github.io/operations/#modo)

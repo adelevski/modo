@@ -49,8 +49,7 @@ APIs may retain other objectives, and experiments are not production.
 
 ## Stewardship
 
-- Write `modo` and `snowball` in lowercase. Credit software to snowball; Nas
-  Delevski is its founder. Do not change product direction by assumption.
+- Write `modo` in lowercase. Do not change product direction by assumption.
 - Original software is MIT. Preserve the separate road-data and Leaflet
   notices; `LICENSE`, `THIRD-PARTY-NOTICES.md` and `CONTRIBUTING.md` are authoritative.
 - Do not add AI-builder labels or production credits to public copy.

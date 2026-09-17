@@ -18,7 +18,7 @@ app = ["gunicorn>=26.2,<27"]
 test = ["build>=1.2,<2", "pytest>=9.0.3,<10", "ruff>=0.12,<1"]
 
 [project.urls]
-Repository = "https://github.com/snowball-projects/modo"
+Repository = "https://github.com/adelevski/modo"
 
 [tool.setuptools.package-data]
 modo = ["snapshots.json", "static/*"]
