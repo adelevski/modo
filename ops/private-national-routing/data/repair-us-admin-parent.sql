@@ -24,7 +24,11 @@ SELECT
   'en',
   CastToMultiPolygon(ST_UnaryUnion(ST_Collect(geom)))
 FROM admins
-WHERE admin_level = 4;
+WHERE admin_level = 4
+HAVING COUNT(*) > 0
+  AND NOT EXISTS (
+    SELECT 1 FROM admins WHERE admin_level = 2 AND iso_code = 'US'
+  );
 
 UPDATE admins
 SET parent_admin = (

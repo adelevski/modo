@@ -14,7 +14,9 @@ modo's national result remains a bounded approximation.
 - Source SHA-256:
   `de48784f65c1160eec691abf47821c7d8deab685c8cc984ba3720ce410c8b5df`
 - Source MD5: `f9a56ae3ef76583cf892e5bfe23a18d4`
-- Active repaired tile archive: 21,079,121,920 bytes
+- Historical repaired tile archive claim: 21,079,121,920 bytes, no SHA-256
+- Portable bundle manifest archive: 20,887,162,880 bytes, SHA-256
+  `0df937bf9044ab043e38b3844fcd65a41f9319389a9d40325497f5432412c846`
 - Active `admins.sqlite`: 16,318,464 bytes
 - Active `timezones.sqlite`: 122,478,592 bytes
 - Fairway's merged private adapter pins modo commit
@@ -23,6 +25,16 @@ modo's national result remains a bounded approximation.
 The image digest above is ARM64-specific. An x86-64 deployment needs a
 separately resolved and recorded official `3.9.1` image digest. Do not replace
 the digest with the mutable tag.
+
+The two archive records conflict; their generation relationship is unresolved.
+The portable bundle was materialized locally and its SHA-256 verified as
+`faa1612082894e61f5bfe1c6172ddda578afd33f10cf469dc89ef3c15d67d05d`.
+All included payload hashes matched its manifest, but the archive is omitted.
+That verifies the manifest record, not the current Spark graph. Restore is
+blocked until the actual intended graph archive is measured and hashed and
+these records are reconciled. Do not choose a generation by size alone.
+The launcher has an explicit hold before container creation; remove it only
+in a reviewed change backed by that measurement and reconciliation.
 
 ## Supporting artifact status
 
@@ -36,8 +48,9 @@ The repository intentionally excludes credentials, personal paths,
 operational telemetry and logs, the live-installation fingerprint, historical
 configuration backup, binary admin database, and unlabeled legacy checksum.
 It also excludes the large PBF, repaired graph extract, expanded tiles, and
-timezone database. Their exact sizes and SHA-256 identities are recorded in
-the checked-in operations README, but no off-machine runtime backup is claimed.
+timezone database. Manifest-recorded sizes and SHA-256 identities are in the
+checked-in operations README, but the archive conflict above remains open and
+no off-machine runtime backup is claimed.
 The multi-state admin/timezone validation is still not preserved as a
 standalone script, so that remains a migration blocker.
 
@@ -49,7 +62,7 @@ These are measurements from this graph, not capacity promises.
 | --- | --- | --- | --- |
 | First national build | 12-core allocation | 80 GiB ceiling; 53.44 GiB measured peak | 95,715,598,000-byte peak data directory; 28m38s sampled lifecycle |
 | Admin-aware rebuild | 12-core allocation | 43.07 GiB highest manual observation, not a sampled peak | 29m56s through archive and restart |
-| Serving | CPU-only; current container capped at 12 CPUs | about 318 MiB fresh idle; about 1.415 GiB after one four-origin matrix, four routes, and metadata checks | 21,048,167,080-byte expanded tiles plus the archive above |
+| Serving | CPU-only; current container capped at 12 CPUs | about 318 MiB fresh idle; about 1.415 GiB after one four-origin matrix, four routes, and metadata checks | historical 21,048,167,080-byte expanded tiles; archive generation unresolved |
 
 The current 12-CPU and 80-GiB container limits preserve the measured build
 envelope; they are not measured serving requirements. A 64-GiB build host is
@@ -64,9 +77,10 @@ them before reducing limits or claiming production capacity.
 
 Rootless Docker binds container port 8002 only to host
 `127.0.0.1:8003`. The persistent data directory is bind-mounted at
-`/custom_files`; the container restart policy is `unless-stopped`. Keep the
-current rootless socket at `unix:///run/user/1000/docker.sock`. On another
-host derive it from `XDG_RUNTIME_DIR` instead of assuming UID 1000. Do not add
+`/custom_files`; the container restart policy is `unless-stopped`. Derive the
+local rootless socket from the service user's `XDG_RUNTIME_DIR`, which must be
+`/run/user/UID`. The scripts reject another endpoint or a `DOCKER_CONTEXT`
+override and require rootless daemon `SecurityOptions` before mutations. Do not add
 a public, LAN, or Tailscale listener.
 
 Both application processes use the same loopback base URL:
@@ -121,9 +135,13 @@ archive, admin/timezone databases, repair inputs, and retained rollback copy.
 4. Restart the original container and run the health check and checked-in
    national verifier.
 
-Restore into a new release directory rather than overwriting the damaged one.
-Verify the saved manifest and the pinned PBF/image identities before creating
-a replacement container. Launch it on an unused loopback port. A migration is
+After resolving the archive conflict above, restore into a new release
+directory rather than overwriting the damaged one. Verify the saved manifest
+and the pinned runtime/image identities before creating a replacement
+container. The launcher requires nonempty config, PBF, tile archive and both
+databases; a partial restore must fail rather than rebuild. Use
+`VALHALLA_CONTAINER` and `VALHALLA_HOST_PORT` for an unused temporary name and
+loopback port. A migration is
 blocked until the checked-in verifier and the separate metadata checks pass;
 then stop the old container and move the verified replacement to port 8003.
 Keep the previous directory and container stopped until application smoke
