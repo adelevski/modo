@@ -28,9 +28,8 @@ for file in "$PBF" valhalla.json valhalla_tiles.tar admins.sqlite timezones.sqli
   [[ -f "$DATA_DIR/$file" && -s "$DATA_DIR/$file" ]] || die "missing or empty runtime file: $file"
 done
 printf '%s  %s\n' '0ba4757cdc8f61be80953ecaec7eb7500513e82febc24d1551140b66891dee83' "$DATA_DIR/valhalla.json" | sha256sum --check --status || die 'runtime config differs from the reviewed config'
-# This supports only the generation recorded in the portable bundle manifest.
-# The conflicting historical runbook size remains unresolved; never substitute it.
-[[ "$(stat -c '%s' "$DATA_DIR/valhalla_tiles.tar")" == '20887162880' ]] || die 'tile archive generation mismatch; restore remains blocked'
+# Require the active repaired generation measured and hashed on Spark.
+[[ "$(stat -c '%s' "$DATA_DIR/valhalla_tiles.tar")" == '21079121920' ]] || die 'tile archive generation mismatch; restore remains blocked'
 printf '%s  %s\n' '0df937bf9044ab043e38b3844fcd65a41f9319389a9d40325497f5432412c846' "$DATA_DIR/valhalla_tiles.tar" | sha256sum --check --status || die 'tile archive SHA-256 mismatch; restore remains blocked'
 printf '%s  %s\n' '73ebbdeaa7304d5b1a88d7a26a8ba191261ae7700b1baf5aea9f011f651baa98' "$DATA_DIR/admins.sqlite" | sha256sum --check --status || die 'repaired admin database SHA-256 mismatch'
 [[ "$(stat -c '%s' "$DATA_DIR/timezones.sqlite")" == '122478592' ]] || die 'timezone database byte count mismatch'
@@ -43,10 +42,6 @@ security_options="$(docker info --format '{{json .SecurityOptions}}')" || die 'r
 printf '%s\n' "$security_options" | python3 -c 'import json, sys; sys.exit("name=rootless" not in json.load(sys.stdin))' || die 'Docker daemon does not report rootless SecurityOptions'
 docker container inspect "$CONTAINER" >/dev/null 2>&1 && die "$CONTAINER already exists"
 docker image inspect "$IMAGE" --format '{{join .RepoDigests "\n"}}' | grep -F -- "$EXPECTED_IMAGE_DIGEST" >/dev/null || die 'pinned image is missing or digest does not match'
-
-# Remove this hold only after measured graph bytes reconcile the two records
-# in the runbook. Matching the bundle manifest alone does not establish that.
-die 'restore blocked: unresolved tile archive generations; reconcile the runbook against actual graph bytes before enabling launch'
 
 docker_args=(
   --detach

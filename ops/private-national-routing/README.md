@@ -18,27 +18,24 @@ The checked-in files are:
 - the national-limit and admin-repair maintenance inputs; and
 - the bounded route/matrix verifier and OSM attribution.
 
-Large runtime assets are deliberately absent. The locally verified portable
-bundle manifest records the identities below; its included admin database was
-also verified against that manifest. The omitted graph bytes were not verified:
+Large runtime assets are deliberately absent. The dated PBF identity below is
+preserved from the portable bundle. The active archive, runtime configuration,
+admin database and timezone database were verified read-only on Spark:
 
 | File | Bytes | SHA-256 |
 | --- | ---: | --- |
 | `us-261011.osm.pbf` | 12,199,919,524 | `de48784f65c1160eec691abf47821c7d8deab685c8cc984ba3720ce410c8b5df` |
-| `valhalla_tiles.tar` | 20,887,162,880 | `0df937bf9044ab043e38b3844fcd65a41f9319389a9d40325497f5432412c846` |
+| `valhalla_tiles.tar` | 21,079,121,920 | `0df937bf9044ab043e38b3844fcd65a41f9319389a9d40325497f5432412c846` |
 | `admins.sqlite` | 16,318,464 | `73ebbdeaa7304d5b1a88d7a26a8ba191261ae7700b1baf5aea9f011f651baa98` |
 | `timezones.sqlite` | 122,478,592 | `7861983249b9165f133f414145e4021fb3e05f18034458ef3b1987faac8a6b87` |
 
-The runbook previously called a 21,079,121,920-byte archive the active repaired
-generation, without a SHA-256. Its relationship to the manifest generation is
-unresolved. Restore is blocked until the actual intended archive is measured
-and hashed and that conflict is reconciled. Do not infer that either record
-identifies the current Spark graph or substitute one archive for the other.
-The launcher checks the manifest generation's exact archive size and SHA-256;
-those checks alone do not establish which generation is active on Spark. An
-explicit launch hold also refuses container creation until a reviewed change
-reconciles the archive evidence and removes the hold. There is no runtime
-override for this hold.
+Read-only verification on 2026-10-13 confirmed the active archive above,
+modified at 02:58:39 UTC. The rollback `valhalla_tiles.tar.pre-admin-repair`,
+modified at 02:22:05 UTC, is 20,887,162,880 bytes with SHA-256
+`6ba78841dd1e8d3f62644a407cf79cf7c2db2d14ce669f9062c1de10de6d1c24`.
+Both files remained unchanged during hashing. The portable manifest mixed
+the rollback size with the active archive hash; use the verified active
+identity above for restore. The launcher rejects the rollback generation.
 
 From this directory, verify the PBF before using the launcher:
 
