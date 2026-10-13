@@ -12,6 +12,7 @@ from .nationwide import (
     CandidateEstimate,
     CoordinateBounds,
     NationwideEstimator,
+    PromisingCandidateArea,
 )
 from .providers import (
     ProviderRoute,
@@ -144,6 +145,7 @@ __all__ = [
     "CompactStaticRoadAnalysis",
     "CoordinateBounds",
     "NationwideEstimator",
+    "PromisingCandidateArea",
     "ProviderRoute",
     "RoadResult",
     "RoadRoute",

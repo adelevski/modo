@@ -36,13 +36,25 @@ class CandidateEstimate:
     objective_seconds: float
     travel_times_seconds: tuple[float, ...]
     excess_seconds: float
-    radius_kilometers: float
 
     @property
     def identifier(self):
         """Return a coordinate-derived identifier stable across equal searches."""
         latitude, longitude = self.coordinate
         return f"modo:{latitude:.6f},{longitude:.6f}"
+
+
+@dataclass(frozen=True)
+class PromisingCandidateArea:
+    """One spatially distinct catalog catchment around a sampled candidate."""
+
+    identifier: str
+    center: Coordinate
+    radius_kilometers: float
+    objective_seconds: float
+    travel_times_seconds: tuple[float, ...]
+    excess_seconds: float
+    resolution_kilometers: float
 
 
 @dataclass(frozen=True)
@@ -60,16 +72,51 @@ class CandidateAreaResult:
     approximate: bool = True
     method: str = "bounded coarse-to-fine matrix sampling"
 
-    def promising_candidates(self, *, limit=8):
-        """Return the best bounded candidates for a downstream catalog adapter."""
+    def promising_candidates(self, *, catchment_radius_kilometers, limit=8):
+        """Select spatially distinct candidates for a downstream catalog.
+
+        The caller-supplied catchment is an operational catalog-search radius.
+        It is intentionally separate from ``final_resolution_km``, which only
+        describes the optimizer's final sampling grid.
+        """
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 8:
             raise ValueError("candidate limit must be an integer from 1 through 8")
-        if not 0 < self.final_resolution_km <= 160:
+        try:
+            radius = float(catchment_radius_kilometers)
+        except (TypeError, ValueError) as error:
             raise ValueError(
-                "final resolution exceeds the 160 km candidate-radius contract; "
-                "increase refinement_rounds"
+                "catchment_radius_kilometers must be positive and at most 160"
+            ) from error
+        if (
+            isinstance(catchment_radius_kilometers, bool)
+            or not isfinite(radius)
+            or not 0 < radius <= 160
+        ):
+            raise ValueError(
+                "catchment_radius_kilometers must be positive and at most 160"
             )
-        return self.candidates[:limit]
+        selected = []
+        for candidate in self.candidates:
+            if any(
+                Geodesic.WGS84.Inverse(*candidate.coordinate, *item.center)["s12"]
+                <= radius * 1000
+                for item in selected
+            ):
+                continue
+            selected.append(
+                PromisingCandidateArea(
+                    candidate.identifier,
+                    candidate.coordinate,
+                    radius,
+                    candidate.objective_seconds,
+                    candidate.travel_times_seconds,
+                    candidate.excess_seconds,
+                    self.final_resolution_km,
+                )
+            )
+            if len(selected) == limit:
+                break
+        return tuple(selected)
 
 
 class NationwideEstimator:
@@ -193,7 +240,7 @@ class NationwideEstimator:
         best_score, best_times = scores[best]
         resolution = self._resolution_km(best, lat_step, lon_step)
         area = tuple(
-            CandidateEstimate(point, score, times, score - best_score, resolution)
+            CandidateEstimate(point, score, times, score - best_score)
             for point, (score, times) in sorted(
                 scores.items(), key=lambda item: (item[1][0], item[0])
             )

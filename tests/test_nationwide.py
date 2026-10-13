@@ -1,8 +1,11 @@
+import io
+import json
 from math import hypot
 
 import pytest
+from geographiclib.geodesic import Geodesic
 
-from modo import NationwideEstimator, RoutingCoverageError
+from modo import NationwideEstimator, RoutingCoverageError, ValhallaHTTPProvider
 
 
 class PlaneProvider:
@@ -32,6 +35,79 @@ class RejectingBatchProvider(PlaneProvider):
         return super().matrix(origins, targets)
 
 
+class Valhalla171Opener:
+    def __init__(self, *, reject_sources=False):
+        self.reject_sources = reject_sources
+
+    def __call__(self, request, timeout):
+        document = json.loads(request.data)
+        targets = document["targets"]
+        if self.reject_sources or any(target["lon"] < -87.5 for target in targets):
+            result = {
+                "error_code": 171,
+                "error": "No suitable edges near location",
+            }
+        else:
+            result = {
+                "sources_to_targets": [
+                    [
+                        {
+                            "time": hypot(
+                                source["lat"] - target["lat"],
+                                source["lon"] - target["lon"],
+                            )
+                            * 3600,
+                            "begin_lat": source["lat"],
+                            "begin_lon": source["lon"],
+                            "end_lat": target["lat"],
+                            "end_lon": target["lon"],
+                        }
+                        for target in targets
+                    ]
+                    for source in document["sources"]
+                ]
+            }
+        return Response(json.dumps(result).encode())
+
+
+class FarSnapOpener:
+    def __init__(self, *, reject_sources=False):
+        self.reject_sources = reject_sources
+
+    def __call__(self, request, timeout):
+        document = json.loads(request.data)
+        result = {
+            "sources_to_targets": [
+                [
+                    {
+                        "time": hypot(
+                            source["lat"] - target["lat"],
+                            source["lon"] - target["lon"],
+                        )
+                        * 3600,
+                        "begin_lat": source["lat"]
+                        + (0.2 if self.reject_sources else 0),
+                        "begin_lon": source["lon"],
+                        "end_lat": target["lat"]
+                        + (0.2 if target["lon"] < -87.5 else 0),
+                        "end_lon": target["lon"],
+                    }
+                    for target in document["targets"]
+                ]
+                for source in document["sources"]
+            ]
+        }
+        return Response(json.dumps(result).encode())
+
+
+class Response(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
 def test_estimator_refines_near_known_minimax_optimum():
     provider = PlaneProvider()
     estimator = NationwideEstimator(
@@ -58,23 +134,25 @@ def test_estimator_refines_near_known_minimax_optimum():
     assert result.matrix_requests == len(provider.calls)
     assert all(len(targets) <= 7 for _, targets in provider.calls)
     assert result.candidates[0].excess_seconds == 0
-    selected = result.promising_candidates(limit=2)
+    selected = result.promising_candidates(limit=2, catchment_radius_kilometers=10)
     assert len(selected) <= 2
     assert selected[0].identifier.startswith("modo:41.")
-    assert selected[0].radius_kilometers == result.final_resolution_km
-    assert 0 < selected[0].radius_kilometers <= 160
+    assert selected[0].radius_kilometers == 10
+    assert selected[0].resolution_kilometers == result.final_resolution_km
 
 
 def test_downstream_candidate_limit_is_capped_at_eight():
     result = NationwideEstimator(PlaneProvider(), coarse_candidate_limit=25).estimate(
         [(41.0, -90.0), (41.0, -86.0)], tolerance_seconds=100_000
     )
-    assert len(result.promising_candidates(limit=8)) <= 8
+    assert (
+        len(result.promising_candidates(limit=8, catchment_radius_kilometers=80)) <= 8
+    )
     with pytest.raises(ValueError, match="1 through 8"):
-        result.promising_candidates(limit=9)
+        result.promising_candidates(limit=9, catchment_radius_kilometers=80)
 
 
-def test_downstream_candidates_reject_resolution_over_radius_contract():
+def test_catalog_catchment_is_separate_from_sampling_resolution():
     result = NationwideEstimator(
         PlaneProvider(), coarse_candidate_limit=9, refinement_rounds=0
     ).estimate(
@@ -82,8 +160,23 @@ def test_downstream_candidates_reject_resolution_over_radius_contract():
         tolerance_seconds=100_000,
     )
     assert result.final_resolution_km > 160
-    with pytest.raises(ValueError, match="160 km"):
-        result.promising_candidates()
+    selected = result.promising_candidates(catchment_radius_kilometers=80)
+    assert selected[0].radius_kilometers == 80
+    assert selected[0].resolution_kilometers > 160
+    with pytest.raises(ValueError, match="at most 160"):
+        result.promising_candidates(catchment_radius_kilometers=161)
+
+
+def test_downstream_candidates_are_spatially_diverse():
+    result = NationwideEstimator(PlaneProvider(), coarse_candidate_limit=36).estimate(
+        [(41.0, -90.0), (41.0, -86.0)], tolerance_seconds=100_000
+    )
+    selected = result.promising_candidates(limit=8, catchment_radius_kilometers=80)
+    assert len(selected) > 1
+    for position, first in enumerate(selected):
+        for second in selected[position + 1 :]:
+            distance = Geodesic.WGS84.Inverse(*first.center, *second.center)["s12"]
+            assert distance > 80_000
 
 
 def test_total_objective_uses_sum_and_deterministic_tie_breaking():
@@ -128,6 +221,53 @@ def test_provider_batch_coverage_error_is_split_to_isolate_bad_candidates():
     ).estimate([(41, -90), (41, -86)])
     assert result.coordinate[1] >= -88.5
     assert result.matrix_requests > len(provider.calls)
+
+
+def test_valhalla_171_mixed_batch_keeps_good_candidates():
+    provider = ValhallaHTTPProvider("http://router.test", opener=Valhalla171Opener())
+    result = NationwideEstimator(
+        provider,
+        coarse_candidate_limit=25,
+        refinement_rounds=2,
+        matrix_target_limit=10,
+    ).estimate([(41, -88), (41, -86)])
+
+    assert result.coordinate == pytest.approx((41, -87), abs=0.08)
+    assert result.coordinate[1] >= -87.5
+    assert result.matrix_requests > provider.request_count
+
+
+def test_valhalla_171_bad_origins_fail_clearly():
+    provider = ValhallaHTTPProvider(
+        "http://router.test", opener=Valhalla171Opener(reject_sources=True)
+    )
+    with pytest.raises(RoutingCoverageError, match="no mutually reachable sampled"):
+        NationwideEstimator(provider, coarse_candidate_limit=9).estimate(
+            [(41, -88), (41, -86)]
+        )
+
+
+def test_far_snapped_sample_is_dropped_without_losing_good_candidates():
+    provider = ValhallaHTTPProvider("http://router.test", opener=FarSnapOpener())
+    result = NationwideEstimator(
+        provider,
+        coarse_candidate_limit=25,
+        refinement_rounds=2,
+        matrix_target_limit=10,
+    ).estimate([(41, -88), (41, -86)])
+
+    assert result.coordinate == pytest.approx((41, -87), abs=0.08)
+    assert result.coordinate[1] >= -87.5
+
+
+def test_far_snapped_origins_fail_clearly():
+    provider = ValhallaHTTPProvider(
+        "http://router.test", opener=FarSnapOpener(reject_sources=True)
+    )
+    with pytest.raises(RoutingCoverageError, match="no mutually reachable sampled"):
+        NationwideEstimator(provider, coarse_candidate_limit=9).estimate(
+            [(41, -88), (41, -86)]
+        )
 
 
 def test_no_mutually_reachable_candidate_fails_clearly():

@@ -64,15 +64,25 @@ estimate = NationwideEstimator(provider).estimate(
     origin_coordinates,
     objective="maximum",  # or "total"
 )
+areas = estimate.promising_candidates(
+    limit=8,
+    catchment_radius_kilometers=80,
+)
 ```
 
 `estimate.approximate` is always true. Its finite `candidates` contain sampled
-coordinates, scores, per-origin travel times, excess above the best sample, and
-the final grid half-cell radius. `final_resolution_km`, `evaluated_candidates`,
-and `matrix_requests` describe
+coordinates, scores, per-origin travel times, and excess above the best sample.
+`final_resolution_km`, `evaluated_candidates`, and `matrix_requests` describe
 the search budget. This is not a global optimum or a complete road-vertex
 region. The caller remains responsible for operating and authorizing its
 provider and for any further venue or facility ranking.
+
+The provider limits road snapping to 1 km by default and sends the same cutoff
+to Valhalla. A farther snapped origin or sample is rejected as a coverage
+failure rather than silently scored at the road coordinate. The catchment
+radius passed to `promising_candidates` is separate operational policy for a
+downstream catalog search; it is not optimizer resolution or guaranteed
+optimal-road coverage.
 
 ## Checks
 

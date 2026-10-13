@@ -121,8 +121,11 @@ tests exact static Worker delivery without changing the production design.
 The package has a separate private nationwide estimation path. A small provider
 adapter sends route and batched matrix requests to a caller-supplied Valhalla
 endpoint with explicit timeouts, a bounded response size, and a small in-memory
-LRU. Unreachable matrix cells remain explicit instead of being converted to a
-large synthetic cost.
+LRU. It sends an explicit 1 km road-search cutoff and verifies the snapped
+source and target coordinates returned by verbose matrices. A larger snap is a
+coverage failure; it never scores or exports an area silently relocated to a
+distant road. Unreachable matrix cells remain explicit instead of being
+converted to a large synthetic cost.
 
 `NationwideEstimator` samples a capped grid over the lower-48 portion spanning
 the origins, keeps only the best anchors, and refines their neighborhoods three
@@ -137,13 +140,16 @@ near-optimal road-vertex region, or a coverage guarantee between samples. It
 does not change the exact Chicago backend or the hosted interface, and it does
 not know about or route a venue catalog. Callers may use the candidate area to
 narrow a separate catalog before routing a small finalist set.
-`result.promising_candidates(limit=8)` supplies the ordered, capped subset for
-that adapter; each item has a coordinate-derived stable identifier and a
-`radius_kilometers` equal to the final grid half-cell radius. Export fails when
-a custom coarse search leaves that radius above 160 km instead of understating
-its uncertainty. A catalog application owns its own wrapper types and
-objective-name translation, keeping modo independent from catalog-specific
-domain models.
+`result.promising_candidates(catchment_radius_kilometers=..., limit=8)` supplies
+the ordered, capped subset for that adapter. Each item has a coordinate-derived
+stable identifier. Selection greedily skips centers already covered by an
+earlier catchment, so several nearly identical best samples do not consume the
+area limit. The caller must explicitly supply the catalog catchment radius,
+bounded to 160 km. This operational radius is not an optimizer uncertainty or
+coverage claim: `resolution_kilometers` separately preserves the final grid
+half-cell resolution. A catalog application owns its wrapper types,
+catchment policy, and objective-name translation, keeping modo independent from
+catalog-specific domain models.
 
 ### Exhaustive-search scale limit
 

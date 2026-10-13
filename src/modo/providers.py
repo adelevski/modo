@@ -11,7 +11,10 @@ from threading import Lock
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from geographiclib.geodesic import Geodesic
+
 Coordinate = tuple[float, float]
+DEFAULT_MAX_SNAP_DISTANCE_KILOMETERS = 1.0
 
 
 class RoutingProviderError(RuntimeError):
@@ -27,7 +30,7 @@ def _valhalla_error(action, document, *, http_status=None):
     code = document.get("error_code", "unknown")
     detail = f"Valhalla {action} failed ({code}): {message}"
     lowered = message.lower()
-    if code == 170 or any(
+    if code in {170, 171} or any(
         phrase in lowered
         for phrase in ("unconnected regions", "no path", "outside coverage")
     ):
@@ -104,6 +107,7 @@ class ValhallaHTTPProvider:
         costing: str = "auto",
         timeout_seconds: float = 10,
         cache_size: int = 128,
+        max_snap_distance_kilometers: float = DEFAULT_MAX_SNAP_DISTANCE_KILOMETERS,
         opener: Callable = urlopen,
     ):
         endpoint = str(endpoint).rstrip("/")
@@ -113,6 +117,16 @@ class ValhallaHTTPProvider:
             raise ValueError("costing must be a nonempty string")
         if not isfinite(timeout_seconds) or timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
+        try:
+            snap_limit = float(max_snap_distance_kilometers)
+        except (TypeError, ValueError) as error:
+            raise ValueError("max_snap_distance_kilometers must be positive") from error
+        if (
+            isinstance(max_snap_distance_kilometers, bool)
+            or not isfinite(snap_limit)
+            or snap_limit <= 0
+        ):
+            raise ValueError("max_snap_distance_kilometers must be positive")
         if (
             isinstance(cache_size, bool)
             or not isinstance(cache_size, int)
@@ -123,22 +137,36 @@ class ValhallaHTTPProvider:
         self.costing = costing
         self.timeout_seconds = float(timeout_seconds)
         self.cache_size = cache_size
+        self.max_snap_distance_kilometers = snap_limit
         self._opener = opener
         self._cache = OrderedDict()
         self._cache_lock = Lock()
         self.request_count = 0
 
-    @staticmethod
-    def _locations(coordinates: Sequence[Coordinate], label: str):
+    def _locations(self, coordinates: Sequence[Coordinate], label: str):
         if not coordinates:
             raise ValueError(f"{label} must not be empty")
         return [
-            {"lat": latitude, "lon": longitude}
+            {
+                "lat": latitude,
+                "lon": longitude,
+                "search_cutoff": max(
+                    1, round(self.max_snap_distance_kilometers * 1000)
+                ),
+            }
             for latitude, longitude in (
                 _coordinate(value, f"{label}[{index}]")
                 for index, value in enumerate(coordinates)
             )
         ]
+
+    def _validate_snap(self, requested, snapped, label):
+        distance = Geodesic.WGS84.Inverse(*requested, *snapped)["s12"] / 1000
+        if distance > self.max_snap_distance_kilometers:
+            raise RoutingCoverageError(
+                f"{label} snapped {distance:.3f} km to the road; maximum is "
+                f"{self.max_snap_distance_kilometers:g} km"
+            )
 
     def _request(self, action: str, payload: dict):
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -198,6 +226,14 @@ class ValhallaHTTPProvider:
         those candidates. Malformed or dimensionally inconsistent responses
         fail the entire request.
         """
+        origins = tuple(
+            _coordinate(value, f"origins[{index}]")
+            for index, value in enumerate(origins)
+        )
+        targets = tuple(
+            _coordinate(value, f"targets[{index}]")
+            for index, value in enumerate(targets)
+        )
         source_locations = self._locations(origins, "origins")
         target_locations = self._locations(targets, "targets")
         result = self._request(
@@ -230,13 +266,36 @@ class ValhallaHTTPProvider:
                 "Valhalla matrix response has invalid dimensions"
             )
         parsed = []
-        for row in rows:
+        for source_index, row in enumerate(rows):
             parsed_row = []
-            for cell in row:
+            for target_index, cell in enumerate(row):
                 value = cell.get("time") if isinstance(cell, dict) else None
                 if value is None:
                     parsed_row.append(None)
                     continue
+                try:
+                    snapped_source = _coordinate(
+                        (cell["begin_lat"], cell["begin_lon"]),
+                        "matrix snapped source",
+                    )
+                    snapped_target = _coordinate(
+                        (cell["end_lat"], cell["end_lon"]),
+                        "matrix snapped target",
+                    )
+                except (KeyError, ValueError) as error:
+                    raise RoutingProviderError(
+                        "Valhalla matrix response is missing snapped coordinates"
+                    ) from error
+                self._validate_snap(
+                    origins[source_index],
+                    snapped_source,
+                    f"origin {source_index}",
+                )
+                self._validate_snap(
+                    targets[target_index],
+                    snapped_target,
+                    f"target {target_index}",
+                )
                 try:
                     value = float(value)
                 except (TypeError, ValueError) as error:
@@ -293,4 +352,8 @@ class ValhallaHTTPProvider:
                 point = _coordinate(value, "route coordinate")
                 if not coordinates or point != coordinates[-1]:
                     coordinates.append(point)
+        if not coordinates:
+            raise RoutingProviderError("Valhalla route geometry is missing")
+        self._validate_snap(origin, coordinates[0], "route origin")
+        self._validate_snap(destination, coordinates[-1], "route destination")
         return ProviderRoute(origin, destination, seconds, tuple(coordinates))
