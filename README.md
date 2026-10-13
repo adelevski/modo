@@ -49,6 +49,50 @@ NetworkX backend exposes the same contracts, and compact analysis accepts
 also pass `objective="maximum"` to omit total-time scoring arrays. Exact
 semantics are in the [mathematical model](docs/model.md).
 
+### Private nationwide estimation
+
+The library also has an intentionally approximate provider path for private
+lower-48 experiments. It leaves routing to Valhalla and samples a bounded,
+coarse-to-fine set of candidate coordinates instead of loading a national road
+graph or routing every facility:
+
+```python
+from modo import NationwideEstimator, ValhallaHTTPProvider
+
+provider = ValhallaHTTPProvider("http://127.0.0.1:8003", timeout_seconds=10)
+estimate = NationwideEstimator(provider).estimate(
+    origin_coordinates,
+    objective="maximum",  # or "total"
+)
+areas = estimate.promising_candidates(
+    limit=8,
+    catchment_radius_kilometers=80,
+)
+```
+
+`estimate.approximate` is always true. Its finite `candidates` contain sampled
+coordinates, scores, per-origin travel times, and excess above the best sample.
+`final_resolution_km`, `evaluated_candidates`, `prefilter_requests`, and
+`matrix_requests` describe the search budget. The Valhalla adapter's
+`request_count` counts every cold network attempt, while
+`successful_request_count` excludes rejected/error responses. This is not a
+global optimum or a complete road-vertex region. The caller remains responsible
+for operating and authorizing its provider and for further venue or facility
+ranking.
+
+The provider limits road snapping and road search to 1 km. Each bounded search
+level uses one batched locate prefilter before matrix scoring, so a farther
+snapped origin or sample fails instead of being silently scored at a distant
+road. The coarse search also omits grid points outside an expanded convex hull
+of three or more origins; the origins themselves and mean seed are always
+retained. The catchment radius passed to `promising_candidates` is separate
+operational policy for a downstream catalog search; it is not optimizer
+resolution or guaranteed optimal-road coverage.
+
+The current private shared-Valhalla topology, pinned graph inputs, measured
+resource envelope, restart/restore procedure, and cross-architecture gates are
+recorded in the [national routing runbook](docs/private-national-routing-runbook.md).
+
 ## Checks
 
 ```sh

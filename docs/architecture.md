@@ -116,6 +116,52 @@ contract. Runtime road downloads are not interim coverage.
 An isolated [browser-routing experiment](../experiments/browser-routing/README.md)
 tests exact static Worker delivery without changing the production design.
 
+### Bounded provider estimate
+
+The package has a separate private nationwide estimation path. A small provider
+adapter sends route and batched matrix requests to a caller-supplied Valhalla
+endpoint with explicit timeouts, a bounded response size, and a small in-memory
+LRU. It applies an explicit 1 km road-search and snap limit and verifies the
+snapped coordinates returned by verbose matrices. One locate batch per search
+level removes samples outside that strict road coverage before matrix scoring;
+farther origins fail clearly rather than being silently relocated. Three or
+more origins also define an expanded convex-hull hint that removes obvious
+out-of-shape coarse grid points; origins and the mean seed bypass that hint.
+Matrix bisection remains the bounded fallback for mixed connectivity failures.
+Rejected coordinates are cached for one estimate, so they are not retried in
+later refinement rounds. Provider `request_count` includes failed cold network
+attempts.
+
+`NationwideEstimator` samples a capped grid over the lower-48 portion spanning
+the origins, keeps only the best anchors, and refines their neighborhoods a
+bounded number of times. The default 81-point, two-refinement budget is
+deliberately coarse; callers can explicitly spend more requests for finer
+sampling. Matrix requests contain at most 40 targets. Both maximum-drive and
+total-drive scores reuse the same per-origin matrix values. The output is a finite list of sampled
+coordinates within the requested score tolerance, plus the final sampling
+resolution and request/evaluation counts.
+
+This result is an approximation. It is not the global road optimum, a complete
+near-optimal road-vertex region, or a coverage guarantee between samples. It
+does not change the exact Chicago backend or the hosted interface, and it does
+not know about or route a venue catalog. Callers may use the candidate area to
+narrow a separate catalog before routing a small finalist set.
+`result.promising_candidates(catchment_radius_kilometers=..., limit=8)` supplies
+the ordered, capped subset for that adapter. Each item has a coordinate-derived
+stable identifier. Selection greedily skips centers already covered by an
+earlier catchment, so several nearly identical best samples do not consume the
+area limit. The caller must explicitly supply the catalog catchment radius,
+bounded to 160 km. This operational radius is not an optimizer uncertainty or
+coverage claim: `resolution_kilometers` separately preserves the final grid
+half-cell resolution. A catalog application owns its wrapper types,
+catchment policy, and objective-name translation, keeping modo independent from
+catalog-specific domain models.
+
+The private host layout, exact routing pins, measured resource envelope, and
+portable restart/restore checks live in the
+[national routing runbook](private-national-routing-runbook.md). They do not
+change the hosted Chicago service or authorize public routing access.
+
 ### Exhaustive-search scale limit
 
 Exhaustive NetworkX search is the exact correctness oracle, not a serving
