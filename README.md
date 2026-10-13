@@ -89,6 +89,18 @@ retained. The catchment radius passed to `promising_candidates` is separate
 operational policy for a downstream catalog search; it is not optimizer
 resolution or guaranteed optimal-road coverage.
 
+Matrix batches also respect a default 2,500 source-target pair limit: the
+target batch shrinks for larger origin groups, and an origin count that cannot
+fit one target fails locally before provider calls. `matrix_pair_limit` on the
+estimator and `max_matrix_pairs` on the Valhalla adapter can select a smaller
+budget; the estimator honors both.
+
+Provider response caching defaults to `cache_size=0`, including for a shared
+provider. An explicit positive cache retains coordinates and responses for
+its lifetime and belongs to one calculation. Use a provider context manager
+or `clear_cache()` when that calculation ends, including error paths. Fairway's
+private API already constructs a cache-disabled provider per request.
+
 The current private shared-Valhalla topology, pinned graph inputs, measured
 resource envelope, restart/restore procedure, and cross-architecture gates are
 recorded in the [national routing runbook](docs/private-national-routing-runbook.md).

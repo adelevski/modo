@@ -15,6 +15,7 @@ from geographiclib.geodesic import Geodesic
 
 Coordinate = tuple[float, float]
 DEFAULT_MAX_SNAP_DISTANCE_KILOMETERS = 1.0
+DEFAULT_MAX_MATRIX_PAIRS = 2500
 
 
 class RoutingProviderError(RuntimeError):
@@ -96,8 +97,10 @@ class ValhallaHTTPProvider:
     """Route through a Valhalla HTTP service without adding a dependency.
 
     The adapter is intentionally synchronous. Estimation batches many targets
-    into each matrix call, and the small LRU avoids repeating identical calls
-    during an interactive private session.
+    into each matrix call. Response caching is disabled by default so a shared
+    provider does not retain request coordinates between calculations. An
+    explicit cache belongs to one calculation; use the context manager or
+    ``clear_cache()`` to discard it on success or failure.
     """
 
     def __init__(
@@ -106,7 +109,8 @@ class ValhallaHTTPProvider:
         *,
         costing: str = "auto",
         timeout_seconds: float = 10,
-        cache_size: int = 128,
+        cache_size: int = 0,
+        max_matrix_pairs: int = DEFAULT_MAX_MATRIX_PAIRS,
         max_snap_distance_kilometers: float = DEFAULT_MAX_SNAP_DISTANCE_KILOMETERS,
         opener: Callable = urlopen,
     ):
@@ -133,16 +137,34 @@ class ValhallaHTTPProvider:
             or cache_size < 0
         ):
             raise ValueError("cache_size must be a nonnegative integer")
+        if (
+            isinstance(max_matrix_pairs, bool)
+            or not isinstance(max_matrix_pairs, int)
+            or max_matrix_pairs < 1
+        ):
+            raise ValueError("max_matrix_pairs must be a positive integer")
         self.endpoint = endpoint
         self.costing = costing
         self.timeout_seconds = float(timeout_seconds)
         self.cache_size = cache_size
+        self.max_matrix_pairs = max_matrix_pairs
         self.max_snap_distance_kilometers = snap_limit
         self._opener = opener
         self._cache = OrderedDict()
         self._cache_lock = Lock()
         self.request_count = 0
         self.successful_request_count = 0
+
+    def clear_cache(self):
+        """Discard cached request coordinates and provider responses."""
+        with self._cache_lock:
+            self._cache.clear()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.clear_cache()
 
     def _locations(self, coordinates: Sequence[Coordinate], label: str):
         if not coordinates:
@@ -284,6 +306,10 @@ class ValhallaHTTPProvider:
             _coordinate(value, f"targets[{index}]")
             for index, value in enumerate(targets)
         )
+        if len(origins) * len(targets) > self.max_matrix_pairs:
+            raise ValueError(
+                f"matrix exceeds max_matrix_pairs ({self.max_matrix_pairs})"
+            )
         source_locations = self._locations(origins, "origins")
         target_locations = self._locations(targets, "targets")
         result = self._request(
@@ -295,18 +321,33 @@ class ValhallaHTTPProvider:
                 "verbose": True,
             },
         )
-        rows = result.get("sources_to_targets")
+        rows = result.get("sources_to_targets") if isinstance(result, dict) else None
         if not isinstance(rows, list):
             raise RoutingProviderError("Valhalla matrix response has no rows")
         if rows and isinstance(rows[0], dict):
             nested = [[None for _ in target_locations] for _ in source_locations]
+            seen = set()
             for cell in rows:
-                try:
-                    nested[int(cell["from_index"])][int(cell["to_index"])] = cell
-                except (IndexError, KeyError, TypeError, ValueError) as error:
+                if not isinstance(cell, dict):
+                    raise RoutingProviderError("Valhalla matrix cell is invalid")
+                source_index = cell.get("from_index")
+                target_index = cell.get("to_index")
+                if (
+                    type(source_index) is not int
+                    or type(target_index) is not int
+                    or not 0 <= source_index < len(origins)
+                    or not 0 <= target_index < len(targets)
+                ):
                     raise RoutingProviderError(
                         "Valhalla matrix cell has invalid indexes"
-                    ) from error
+                    )
+                pair = source_index, target_index
+                if pair in seen:
+                    raise RoutingProviderError("Valhalla matrix has duplicate cells")
+                seen.add(pair)
+                nested[source_index][target_index] = cell
+            if len(seen) != len(origins) * len(targets):
+                raise RoutingProviderError("Valhalla matrix is incomplete")
             rows = nested
         if len(rows) != len(source_locations) or any(
             not isinstance(row, list) or len(row) != len(target_locations)
@@ -319,7 +360,18 @@ class ValhallaHTTPProvider:
         for source_index, row in enumerate(rows):
             parsed_row = []
             for target_index, cell in enumerate(row):
-                value = cell.get("time") if isinstance(cell, dict) else None
+                if not isinstance(cell, dict) or "time" not in cell:
+                    raise RoutingProviderError("Valhalla matrix cell is invalid")
+                if ("from_index" in cell or "to_index" in cell) and (
+                    type(cell.get("from_index")) is not int
+                    or type(cell.get("to_index")) is not int
+                    or cell["from_index"] != source_index
+                    or cell["to_index"] != target_index
+                ):
+                    raise RoutingProviderError(
+                        "Valhalla matrix cell has invalid indexes"
+                    )
+                value = cell["time"]
                 if value is None:
                     parsed_row.append(None)
                     continue

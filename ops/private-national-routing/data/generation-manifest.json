@@ -1,0 +1,35 @@
+{
+  "schema": "modo-routing-generation-v1",
+  "status": "verified-identities",
+  "platform": "linux/arm64",
+  "image": "ghcr.io/valhalla/valhalla-scripted:3.9.1@sha256:f182f45e9e71cbe737e6c394d68808c67a7bd12e2a4cc47c4aba864de77ecdc6",
+  "assets": [
+    {
+      "file_name": "valhalla.json",
+      "bytes": 9551,
+      "sha256": "0ba4757cdc8f61be80953ecaec7eb7500513e82febc24d1551140b66891dee83"
+    },
+    {
+      "file_name": "admins.sqlite",
+      "bytes": 16318464,
+      "sha256": "73ebbdeaa7304d5b1a88d7a26a8ba191261ae7700b1baf5aea9f011f651baa98"
+    },
+    {
+      "file_name": "timezones.sqlite",
+      "bytes": 122478592,
+      "sha256": "7861983249b9165f133f414145e4021fb3e05f18034458ef3b1987faac8a6b87"
+    },
+    {
+      "file_name": "valhalla_tiles.tar",
+      "bytes": 21079121920,
+      "sha256": "0df937bf9044ab043e38b3844fcd65a41f9319389a9d40325497f5432412c846"
+    }
+  ],
+  "external_assets": [
+    {
+      "file_name": "us-261011.osm.pbf",
+      "bytes": 12199919524,
+      "sha256": "de48784f65c1160eec691abf47821c7d8deab685c8cc984ba3720ce410c8b5df"
+    }
+  ]
+}
