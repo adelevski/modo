@@ -89,6 +89,10 @@ retained. The catchment radius passed to `promising_candidates` is separate
 operational policy for a downstream catalog search; it is not optimizer
 resolution or guaranteed optimal-road coverage.
 
+The current private shared-Valhalla topology, pinned graph inputs, measured
+resource envelope, restart/restore procedure, and cross-architecture gates are
+recorded in the [national routing runbook](docs/private-national-routing-runbook.md).
+
 ## Checks
 
 ```sh

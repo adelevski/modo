@@ -157,6 +157,11 @@ half-cell resolution. A catalog application owns its wrapper types,
 catchment policy, and objective-name translation, keeping modo independent from
 catalog-specific domain models.
 
+The private host layout, exact routing pins, measured resource envelope, and
+portable restart/restore checks live in the
+[national routing runbook](private-national-routing-runbook.md). They do not
+change the hosted Chicago service or authorize public routing access.
+
 ### Exhaustive-search scale limit
 
 Exhaustive NetworkX search is the exact correctness oracle, not a serving
