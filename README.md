@@ -49,6 +49,31 @@ NetworkX backend exposes the same contracts, and compact analysis accepts
 also pass `objective="maximum"` to omit total-time scoring arrays. Exact
 semantics are in the [mathematical model](docs/model.md).
 
+### Private nationwide estimation
+
+The library also has an intentionally approximate provider path for private
+lower-48 experiments. It leaves routing to Valhalla and samples a bounded,
+coarse-to-fine set of candidate coordinates instead of loading a national road
+graph or routing every facility:
+
+```python
+from modo import NationwideEstimator, ValhallaHTTPProvider
+
+provider = ValhallaHTTPProvider("http://127.0.0.1:8003", timeout_seconds=10)
+estimate = NationwideEstimator(provider).estimate(
+    origin_coordinates,
+    objective="maximum",  # or "total"
+)
+```
+
+`estimate.approximate` is always true. Its finite `candidates` contain sampled
+coordinates, scores, per-origin travel times, excess above the best sample, and
+the final grid half-cell radius. `final_resolution_km`, `evaluated_candidates`,
+and `matrix_requests` describe
+the search budget. This is not a global optimum or a complete road-vertex
+region. The caller remains responsible for operating and authorizing its
+provider and for any further venue or facility ranking.
+
 ## Checks
 
 ```sh

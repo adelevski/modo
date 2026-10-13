@@ -6,6 +6,19 @@ from geographiclib.geodesic import Geodesic
 from scipy.optimize import minimize
 
 from .compact import CompactRoadGraph, CompactStaticRoadAnalysis
+from .nationwide import (
+    LOWER_48_BOUNDS,
+    CandidateAreaResult,
+    CandidateEstimate,
+    CoordinateBounds,
+    NationwideEstimator,
+)
+from .providers import (
+    ProviderRoute,
+    RoutingCoverageError,
+    RoutingProviderError,
+    ValhallaHTTPProvider,
+)
 from .road import (
     RoadResult,
     RoadRoute,
@@ -124,12 +137,21 @@ def minimax_center(coordinates):
 
 
 __all__ = [
+    "LOWER_48_BOUNDS",
+    "CandidateAreaResult",
+    "CandidateEstimate",
     "CompactRoadGraph",
     "CompactStaticRoadAnalysis",
+    "CoordinateBounds",
+    "NationwideEstimator",
+    "ProviderRoute",
     "RoadResult",
     "RoadRoute",
     "RoadTravelTimes",
+    "RoutingCoverageError",
+    "RoutingProviderError",
     "StaticRoadAnalysis",
+    "ValhallaHTTPProvider",
     "analyze_coordinates",
     "analyze_vertices",
     "geographic_median",
