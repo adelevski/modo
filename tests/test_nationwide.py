@@ -27,12 +27,27 @@ class PlaneProvider:
 
 
 class RejectingBatchProvider(PlaneProvider):
+    def __init__(self, unreachable=None):
+        super().__init__(unreachable)
+        self.singleton_rejections = []
+
     def matrix(self, origins, targets):
         if any(self.unreachable(target) for target in targets):
             if len(targets) > 1:
                 raise RoutingCoverageError("batch contains an unconnected location")
+            self.singleton_rejections.append(targets[0])
             raise RoutingCoverageError("location is unconnected")
         return super().matrix(origins, targets)
+
+
+class PrefilteringPlaneProvider(PlaneProvider):
+    def __init__(self, unreachable=None):
+        super().__init__(unreachable)
+        self.prefilter_calls = []
+
+    def filter_reachable(self, coordinates):
+        self.prefilter_calls.append(tuple(coordinates))
+        return tuple(not self.unreachable(point) for point in coordinates)
 
 
 class Valhalla171Opener:
@@ -106,6 +121,10 @@ class Response(io.BytesIO):
 
     def __exit__(self, *args):
         self.close()
+
+
+class NoPrefilterValhalla(ValhallaHTTPProvider):
+    filter_reachable = None
 
 
 def test_estimator_refines_near_known_minimax_optimum():
@@ -200,7 +219,7 @@ def test_four_distant_public_city_coordinates_stay_bounded():
         objective="maximum",
     )
 
-    assert result.evaluated_candidates < 400
+    assert result.evaluated_candidates < 300
     assert result.matrix_requests <= 24
     assert 24.396 <= result.coordinate[0] <= 49.384
     assert -124.849 <= result.coordinate[1] <= -66.885
@@ -224,7 +243,7 @@ def test_provider_batch_coverage_error_is_split_to_isolate_bad_candidates():
 
 
 def test_valhalla_171_mixed_batch_keeps_good_candidates():
-    provider = ValhallaHTTPProvider("http://router.test", opener=Valhalla171Opener())
+    provider = NoPrefilterValhalla("http://router.test", opener=Valhalla171Opener())
     result = NationwideEstimator(
         provider,
         coarse_candidate_limit=25,
@@ -234,11 +253,12 @@ def test_valhalla_171_mixed_batch_keeps_good_candidates():
 
     assert result.coordinate == pytest.approx((41, -87), abs=0.08)
     assert result.coordinate[1] >= -87.5
-    assert result.matrix_requests > provider.request_count
+    assert result.matrix_requests == provider.request_count
+    assert provider.successful_request_count < provider.request_count
 
 
 def test_valhalla_171_bad_origins_fail_clearly():
-    provider = ValhallaHTTPProvider(
+    provider = NoPrefilterValhalla(
         "http://router.test", opener=Valhalla171Opener(reject_sources=True)
     )
     with pytest.raises(RoutingCoverageError, match="no mutually reachable sampled"):
@@ -248,7 +268,7 @@ def test_valhalla_171_bad_origins_fail_clearly():
 
 
 def test_far_snapped_sample_is_dropped_without_losing_good_candidates():
-    provider = ValhallaHTTPProvider("http://router.test", opener=FarSnapOpener())
+    provider = NoPrefilterValhalla("http://router.test", opener=FarSnapOpener())
     result = NationwideEstimator(
         provider,
         coarse_candidate_limit=25,
@@ -261,13 +281,53 @@ def test_far_snapped_sample_is_dropped_without_losing_good_candidates():
 
 
 def test_far_snapped_origins_fail_clearly():
-    provider = ValhallaHTTPProvider(
+    provider = NoPrefilterValhalla(
         "http://router.test", opener=FarSnapOpener(reject_sources=True)
     )
     with pytest.raises(RoutingCoverageError, match="no mutually reachable sampled"):
         NationwideEstimator(provider, coarse_candidate_limit=9).estimate(
             [(41, -88), (41, -86)]
         )
+
+
+def test_rejected_candidates_are_not_retried_across_refinement_rounds():
+    provider = RejectingBatchProvider(unreachable=lambda point: point[1] < -88.5)
+    result = NationwideEstimator(
+        provider,
+        coarse_candidate_limit=25,
+        refinement_rounds=3,
+        finalists_per_round=8,
+        matrix_target_limit=5,
+    ).estimate([(41, -90), (41, -86)])
+
+    assert len(provider.singleton_rejections) == len(set(provider.singleton_rejections))
+    assert result.coordinate[1] >= -88.5
+
+
+def test_prefilter_runs_once_per_level_and_keeps_rejected_points_out_of_matrices():
+    provider = PrefilteringPlaneProvider(unreachable=lambda point: point[1] < -88.5)
+    result = NationwideEstimator(
+        provider,
+        coarse_candidate_limit=25,
+        refinement_rounds=2,
+        finalists_per_round=4,
+        matrix_target_limit=7,
+    ).estimate([(41, -88), (41, -86)])
+
+    assert result.prefilter_requests == 3
+    assert len(provider.prefilter_calls) == 3
+    assert all(
+        target[1] >= -88.5 for _, targets in provider.calls for target in targets
+    )
+
+
+def test_prefilter_reports_origin_indexes_outside_provider_coverage():
+    provider = PrefilteringPlaneProvider(unreachable=lambda point: point[1] < -88.5)
+
+    with pytest.raises(RoutingCoverageError, match="road coverage: 0"):
+        NationwideEstimator(provider).estimate([(41, -90), (41, -86)])
+
+    assert provider.calls == []
 
 
 def test_no_mutually_reachable_candidate_fails_clearly():

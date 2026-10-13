@@ -121,17 +121,23 @@ tests exact static Worker delivery without changing the production design.
 The package has a separate private nationwide estimation path. A small provider
 adapter sends route and batched matrix requests to a caller-supplied Valhalla
 endpoint with explicit timeouts, a bounded response size, and a small in-memory
-LRU. It sends an explicit 1 km road-search cutoff and verifies the snapped
-source and target coordinates returned by verbose matrices. A larger snap is a
-coverage failure; it never scores or exports an area silently relocated to a
-distant road. Unreachable matrix cells remain explicit instead of being
-converted to a large synthetic cost.
+LRU. It applies an explicit 1 km road-search and snap limit and verifies the
+snapped coordinates returned by verbose matrices. One locate batch per search
+level removes samples outside that strict road coverage before matrix scoring;
+farther origins fail clearly rather than being silently relocated. Three or
+more origins also define an expanded convex-hull hint that removes obvious
+out-of-shape coarse grid points; origins and the mean seed bypass that hint.
+Matrix bisection remains the bounded fallback for mixed connectivity failures.
+Rejected coordinates are cached for one estimate, so they are not retried in
+later refinement rounds. Provider `request_count` includes failed cold network
+attempts.
 
 `NationwideEstimator` samples a capped grid over the lower-48 portion spanning
-the origins, keeps only the best anchors, and refines their neighborhoods three
-times. The defaults evaluate fewer than 400 coordinates and send at most 40
-targets per matrix request. Both maximum-drive and total-drive scores reuse the
-same per-origin matrix values. The output is a finite list of sampled
+the origins, keeps only the best anchors, and refines their neighborhoods a
+bounded number of times. The default 81-point, two-refinement budget is
+deliberately coarse; callers can explicitly spend more requests for finer
+sampling. Matrix requests contain at most 40 targets. Both maximum-drive and
+total-drive scores reuse the same per-origin matrix values. The output is a finite list of sampled
 coordinates within the requested score tolerance, plus the final sampling
 resolution and request/evaluation counts.
 

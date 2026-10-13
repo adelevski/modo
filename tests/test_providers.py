@@ -60,6 +60,8 @@ def test_valhalla_matrix_parses_rows_and_caches_identical_request():
     assert provider.matrix(origins, targets) == ((4.0, None), (7.5, 8.0))
     assert provider.matrix(origins, targets) == ((4.0, None), (7.5, 8.0))
     assert len(calls) == 1
+    assert provider.request_count == 1
+    assert provider.successful_request_count == 1
     assert calls[0][1] == 3
     body = json.loads(calls[0][0].data)
     assert body["verbose"] is True
@@ -97,7 +99,7 @@ def test_valhalla_matrix_parses_flat_verbose_cells():
     )
 
 
-def test_valhalla_matrix_rejects_far_snapped_target():
+def test_valhalla_matrix_marks_far_snapped_target_unreachable():
     def opener(request, timeout):
         return Response(
             json.dumps(
@@ -106,8 +108,26 @@ def test_valhalla_matrix_rejects_far_snapped_target():
         )
 
     provider = ValhallaHTTPProvider("http://router.test", opener=opener)
-    with pytest.raises(RoutingCoverageError, match=r"target 0 snapped 22\."):
-        provider.matrix([(41, -87)], [(41, -87)])
+    assert provider.matrix([(41, -87)], [(41, -87)]) == ((None,),)
+
+
+def test_valhalla_locate_prefilters_mixed_coordinates_in_one_request():
+    def opener(request, timeout):
+        body = json.loads(request.data)
+        assert all(item["search_cutoff"] == 1000 for item in body["locations"])
+        return Response(
+            json.dumps(
+                [
+                    {"edges": [{"correlated_lat": 41.0, "correlated_lon": -87.0}]},
+                    {"edges": []},
+                ]
+            ).encode()
+        )
+
+    provider = ValhallaHTTPProvider("http://router.test", opener=opener)
+    assert provider.filter_reachable([(41, -87), (41, -86)]) == (True, False)
+    assert provider.request_count == 1
+    assert provider.successful_request_count == 1
 
 
 def test_valhalla_route_parses_geojson_and_joins_leg_boundaries():
@@ -210,3 +230,5 @@ def test_valhalla_no_suitable_edges_is_a_coverage_error():
         RoutingCoverageError, match=r"failed \(171\): No suitable edges"
     ):
         provider.matrix([(41, -87)], [(42, -88)])
+    assert provider.request_count == 1
+    assert provider.successful_request_count == 0

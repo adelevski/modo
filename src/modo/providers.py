@@ -142,6 +142,7 @@ class ValhallaHTTPProvider:
         self._cache = OrderedDict()
         self._cache_lock = Lock()
         self.request_count = 0
+        self.successful_request_count = 0
 
     def _locations(self, coordinates: Sequence[Coordinate], label: str):
         if not coordinates:
@@ -160,8 +161,12 @@ class ValhallaHTTPProvider:
             )
         ]
 
+    @staticmethod
+    def _snap_distance_kilometers(requested, snapped):
+        return Geodesic.WGS84.Inverse(*requested, *snapped)["s12"] / 1000
+
     def _validate_snap(self, requested, snapped, label):
-        distance = Geodesic.WGS84.Inverse(*requested, *snapped)["s12"] / 1000
+        distance = self._snap_distance_kilometers(requested, snapped)
         if distance > self.max_snap_distance_kilometers:
             raise RoutingCoverageError(
                 f"{label} snapped {distance:.3f} km to the road; maximum is "
@@ -182,6 +187,7 @@ class ValhallaHTTPProvider:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
+        self.request_count += 1
         try:
             with self._opener(request, timeout=self.timeout_seconds) as response:
                 raw = response.read(16 * 1024 * 1024 + 1)
@@ -205,17 +211,61 @@ class ValhallaHTTPProvider:
             result = json.loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise RoutingProviderError("Valhalla returned invalid JSON") from error
-        if not isinstance(result, dict):
+        if not isinstance(result, (dict, list)):
             raise RoutingProviderError("Valhalla returned an invalid response")
-        if result.get("error"):
+        if isinstance(result, dict) and result.get("error"):
             raise _valhalla_error(action, result)
-        self.request_count += 1
+        self.successful_request_count += 1
         if self.cache_size:
             with self._cache_lock:
                 self._cache[key] = result
                 while len(self._cache) > self.cache_size:
                     self._cache.popitem(last=False)
         return result
+
+    def filter_reachable(self, coordinates: Sequence[Coordinate]) -> tuple[bool, ...]:
+        """Return which coordinates correlate to an auto-accessible road."""
+        coordinates = tuple(
+            _coordinate(value, f"coordinates[{index}]")
+            for index, value in enumerate(coordinates)
+        )
+        result = self._request(
+            "locate",
+            {
+                "locations": self._locations(coordinates, "coordinates"),
+                "costing": self.costing,
+                "verbose": False,
+            },
+        )
+        if not isinstance(result, list) or len(result) != len(coordinates):
+            raise RoutingProviderError(
+                "Valhalla locate response has invalid dimensions"
+            )
+        reachable = []
+        for index, (requested, item) in enumerate(
+            zip(coordinates, result, strict=True)
+        ):
+            edges = item.get("edges") if isinstance(item, dict) else None
+            if not isinstance(edges, list):
+                raise RoutingProviderError("Valhalla locate response is invalid")
+            if not edges:
+                reachable.append(False)
+                continue
+            edge = edges[0]
+            try:
+                snapped = _coordinate(
+                    (edge["correlated_lat"], edge["correlated_lon"]),
+                    "locate snapped coordinate",
+                )
+            except (KeyError, TypeError, ValueError) as error:
+                raise RoutingProviderError(
+                    "Valhalla locate response is missing snapped coordinates"
+                ) from error
+            reachable.append(
+                self._snap_distance_kilometers(requested, snapped)
+                <= self.max_snap_distance_kilometers
+            )
+        return tuple(reachable)
 
     def matrix(
         self, origins: Sequence[Coordinate], targets: Sequence[Coordinate]
@@ -291,11 +341,14 @@ class ValhallaHTTPProvider:
                     snapped_source,
                     f"origin {source_index}",
                 )
-                self._validate_snap(
-                    targets[target_index],
-                    snapped_target,
-                    f"target {target_index}",
-                )
+                if (
+                    self._snap_distance_kilometers(
+                        targets[target_index], snapped_target
+                    )
+                    > self.max_snap_distance_kilometers
+                ):
+                    parsed_row.append(None)
+                    continue
                 try:
                     value = float(value)
                 except (TypeError, ValueError) as error:

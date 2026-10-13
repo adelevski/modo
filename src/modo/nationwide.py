@@ -68,6 +68,7 @@ class CandidateAreaResult:
     candidates: tuple[CandidateEstimate, ...]
     evaluated_candidates: int
     matrix_requests: int
+    prefilter_requests: int
     final_resolution_km: float
     approximate: bool = True
     method: str = "bounded coarse-to-fine matrix sampling"
@@ -127,9 +128,9 @@ class NationwideEstimator:
         provider,
         *,
         bounds: CoordinateBounds = LOWER_48_BOUNDS,
-        coarse_candidate_limit: int = 144,
-        refinement_rounds: int = 3,
-        finalists_per_round: int = 8,
+        coarse_candidate_limit: int = 81,
+        refinement_rounds: int = 2,
+        finalists_per_round: int = 6,
         matrix_target_limit: int = 40,
     ):
         for value, label, minimum in (
@@ -182,11 +183,20 @@ class NationwideEstimator:
         candidates, lat_step, lon_step = self._grid(
             search_bounds, self.coarse_candidate_limit
         )
+        polygon = self._expanded_origin_hull(origins)
+        if polygon:
+            candidates = tuple(
+                point for point in candidates if self._inside_polygon(point, polygon)
+            )
         candidates = self._deduplicate(
             (*origins, self._mean_seed(origins), *candidates)
         )
         scores = {}
+        rejected = set()
         request_count = 0
+        prefilter_count = 0
+        prefilter = getattr(self.provider, "filter_reachable", None)
+        origins_checked = False
 
         def evaluate(batch):
             nonlocal request_count
@@ -197,6 +207,7 @@ class NationwideEstimator:
                 matrix = self.provider.matrix(origins, batch)
             except RoutingCoverageError:
                 if len(batch) == 1:
+                    rejected.add(batch[0])
                     return
                 middle = len(batch) // 2
                 evaluate(batch[:middle])
@@ -211,6 +222,7 @@ class NationwideEstimator:
             for target_index, point in enumerate(batch):
                 times = tuple(row[target_index] for row in matrix)
                 if any(value is None for value in times):
+                    rejected.add(point)
                     continue
                 values = tuple(float(value) for value in times)
                 if any(not isfinite(value) or value < 0 for value in values):
@@ -219,7 +231,36 @@ class NationwideEstimator:
                 scores[point] = score, values
 
         for level in range(self.refinement_rounds + 1):
-            fresh = tuple(point for point in candidates if point not in scores)
+            fresh = tuple(
+                point
+                for point in candidates
+                if point not in scores and point not in rejected
+            )
+            if callable(prefilter) and fresh:
+                probe = (*(() if origins_checked else origins), *fresh)
+                prefilter_count += 1
+                reachable = tuple(prefilter(probe))
+                if len(reachable) != len(probe):
+                    raise RuntimeError(
+                        "routing provider returned invalid prefilter dimensions"
+                    )
+                if not origins_checked:
+                    origin_reachable = reachable[: len(origins)]
+                    outside = [
+                        index
+                        for index, is_reachable in enumerate(origin_reachable)
+                        if not is_reachable
+                    ]
+                    if outside:
+                        joined = ", ".join(str(index) for index in outside)
+                        raise RoutingCoverageError(
+                            f"origins outside provider road coverage: {joined}"
+                        )
+                    origins_checked = True
+                for point, is_reachable in zip(probe, reachable, strict=True):
+                    if not is_reachable:
+                        rejected.add(point)
+                fresh = tuple(point for point in fresh if point not in rejected)
             for start in range(0, len(fresh), self.matrix_target_limit):
                 batch = fresh[start : start + self.matrix_target_limit]
                 evaluate(batch)
@@ -254,6 +295,7 @@ class NationwideEstimator:
             area,
             len(scores),
             request_count,
+            prefilter_count,
             resolution,
         )
 
@@ -269,6 +311,62 @@ class NationwideEstimator:
             min(self.bounds.north, max(latitudes) + lat_pad),
             min(self.bounds.east, max(longitudes) + lon_pad),
         )
+
+    def _expanded_origin_hull(self, origins):
+        points = sorted({(longitude, latitude) for latitude, longitude in origins})
+        if len(points) < 3:
+            return ()
+
+        def cross(first, middle, last):
+            return (middle[0] - first[0]) * (last[1] - first[1]) - (
+                middle[1] - first[1]
+            ) * (last[0] - first[0])
+
+        lower = []
+        for point in points:
+            while len(lower) >= 2 and cross(lower[-2], lower[-1], point) <= 0:
+                lower.pop()
+            lower.append(point)
+        upper = []
+        for point in reversed(points):
+            while len(upper) >= 2 and cross(upper[-2], upper[-1], point) <= 0:
+                upper.pop()
+            upper.append(point)
+        hull = lower[:-1] + upper[:-1]
+        if len(hull) < 3:
+            return ()
+        center_lon = fsum(point[0] for point in hull) / len(hull)
+        center_lat = fsum(point[1] for point in hull) / len(hull)
+        return tuple(
+            (
+                max(
+                    self.bounds.south,
+                    min(self.bounds.north, center_lat + (latitude - center_lat) * 1.12),
+                ),
+                max(
+                    self.bounds.west,
+                    min(self.bounds.east, center_lon + (longitude - center_lon) * 1.12),
+                ),
+            )
+            for longitude, latitude in hull
+        )
+
+    @staticmethod
+    def _inside_polygon(point, polygon):
+        latitude, longitude = point
+        inside = False
+        previous = polygon[-1]
+        for current in polygon:
+            first_lat, first_lon = previous
+            second_lat, second_lon = current
+            if (first_lat > latitude) != (second_lat > latitude):
+                crossing = (second_lon - first_lon) * (latitude - first_lat) / (
+                    second_lat - first_lat
+                ) + first_lon
+                if longitude < crossing:
+                    inside = not inside
+            previous = current
+        return inside
 
     @staticmethod
     def _mean_seed(origins):

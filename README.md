@@ -72,17 +72,22 @@ areas = estimate.promising_candidates(
 
 `estimate.approximate` is always true. Its finite `candidates` contain sampled
 coordinates, scores, per-origin travel times, and excess above the best sample.
-`final_resolution_km`, `evaluated_candidates`, and `matrix_requests` describe
-the search budget. This is not a global optimum or a complete road-vertex
-region. The caller remains responsible for operating and authorizing its
-provider and for any further venue or facility ranking.
+`final_resolution_km`, `evaluated_candidates`, `prefilter_requests`, and
+`matrix_requests` describe the search budget. The Valhalla adapter's
+`request_count` counts every cold network attempt, while
+`successful_request_count` excludes rejected/error responses. This is not a
+global optimum or a complete road-vertex region. The caller remains responsible
+for operating and authorizing its provider and for further venue or facility
+ranking.
 
-The provider limits road snapping to 1 km by default and sends the same cutoff
-to Valhalla. A farther snapped origin or sample is rejected as a coverage
-failure rather than silently scored at the road coordinate. The catchment
-radius passed to `promising_candidates` is separate operational policy for a
-downstream catalog search; it is not optimizer resolution or guaranteed
-optimal-road coverage.
+The provider limits road snapping and road search to 1 km. Each bounded search
+level uses one batched locate prefilter before matrix scoring, so a farther
+snapped origin or sample fails instead of being silently scored at a distant
+road. The coarse search also omits grid points outside an expanded convex hull
+of three or more origins; the origins themselves and mean seed are always
+retained. The catchment radius passed to `promising_candidates` is separate
+operational policy for a downstream catalog search; it is not optimizer
+resolution or guaranteed optimal-road coverage.
 
 ## Checks
 
