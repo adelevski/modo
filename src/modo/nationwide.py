@@ -132,12 +132,14 @@ class NationwideEstimator:
         refinement_rounds: int = 2,
         finalists_per_round: int = 6,
         matrix_target_limit: int = 40,
+        matrix_pair_limit: int = 2500,
     ):
         for value, label, minimum in (
             (coarse_candidate_limit, "coarse_candidate_limit", 9),
             (refinement_rounds, "refinement_rounds", 0),
             (finalists_per_round, "finalists_per_round", 1),
             (matrix_target_limit, "matrix_target_limit", 1),
+            (matrix_pair_limit, "matrix_pair_limit", 1),
         ):
             if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
                 raise ValueError(f"{label} must be an integer of at least {minimum}")
@@ -147,6 +149,7 @@ class NationwideEstimator:
         self.refinement_rounds = refinement_rounds
         self.finalists_per_round = finalists_per_round
         self.matrix_target_limit = matrix_target_limit
+        self.matrix_pair_limit = matrix_pair_limit
 
     def estimate(
         self,
@@ -162,6 +165,19 @@ class NationwideEstimator:
         )
         if len(origins) < 2:
             raise ValueError("origins must contain at least two coordinates")
+        provider_pair_limit = getattr(
+            self.provider, "max_matrix_pairs", self.matrix_pair_limit
+        )
+        if (
+            isinstance(provider_pair_limit, bool)
+            or not isinstance(provider_pair_limit, int)
+            or provider_pair_limit < 1
+        ):
+            raise ValueError("provider max_matrix_pairs must be a positive integer")
+        pair_limit = min(self.matrix_pair_limit, provider_pair_limit)
+        target_limit = min(self.matrix_target_limit, pair_limit // len(origins))
+        if target_limit < 1:
+            raise ValueError(f"origin count exceeds matrix pair limit ({pair_limit})")
         outside = [
             index
             for index, point in enumerate(origins)
@@ -261,8 +277,8 @@ class NationwideEstimator:
                     if not is_reachable:
                         rejected.add(point)
                 fresh = tuple(point for point in fresh if point not in rejected)
-            for start in range(0, len(fresh), self.matrix_target_limit):
-                batch = fresh[start : start + self.matrix_target_limit]
+            for start in range(0, len(fresh), target_limit):
+                batch = fresh[start : start + target_limit]
                 evaluate(batch)
             if not scores:
                 raise RoutingCoverageError(

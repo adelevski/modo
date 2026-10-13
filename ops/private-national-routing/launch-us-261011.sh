@@ -3,10 +3,6 @@ set -Eeuo pipefail
 
 IMAGE='ghcr.io/valhalla/valhalla-scripted:3.9.1@sha256:f182f45e9e71cbe737e6c394d68808c67a7bd12e2a4cc47c4aba864de77ecdc6'
 EXPECTED_IMAGE_DIGEST='sha256:f182f45e9e71cbe737e6c394d68808c67a7bd12e2a4cc47c4aba864de77ecdc6'
-PBF='us-261011.osm.pbf'
-EXPECTED_PBF_BYTES='12199919524'
-EXPECTED_PBF_MD5='f9a56ae3ef76583cf892e5bfe23a18d4'
-EXPECTED_PBF_SHA256='de48784f65c1160eec691abf47821c7d8deab685c8cc984ba3720ce410c8b5df'
 CONTAINER="${VALHALLA_CONTAINER:-valhalla-us-261011}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 DATA_DIR="${ROUTING_DATA_DIR:-$SCRIPT_DIR/data}"
@@ -24,20 +20,7 @@ expected_docker_host="unix://$XDG_RUNTIME_DIR/docker.sock"
 [[ "$(stat -c '%u' "$XDG_RUNTIME_DIR/docker.sock")" == "$(id -u)" ]] || die 'rootless Docker socket has the wrong owner'
 export DOCKER_HOST="$expected_docker_host"
 
-for file in "$PBF" valhalla.json valhalla_tiles.tar admins.sqlite timezones.sqlite; do
-  [[ -f "$DATA_DIR/$file" && -s "$DATA_DIR/$file" ]] || die "missing or empty runtime file: $file"
-done
-printf '%s  %s\n' '0ba4757cdc8f61be80953ecaec7eb7500513e82febc24d1551140b66891dee83' "$DATA_DIR/valhalla.json" | sha256sum --check --status || die 'runtime config differs from the reviewed config'
-# Require the active repaired generation measured and hashed on Spark.
-[[ "$(stat -c '%s' "$DATA_DIR/valhalla_tiles.tar")" == '21079121920' ]] || die 'tile archive generation mismatch; restore remains blocked'
-printf '%s  %s\n' '0df937bf9044ab043e38b3844fcd65a41f9319389a9d40325497f5432412c846' "$DATA_DIR/valhalla_tiles.tar" | sha256sum --check --status || die 'tile archive SHA-256 mismatch; restore remains blocked'
-printf '%s  %s\n' '73ebbdeaa7304d5b1a88d7a26a8ba191261ae7700b1baf5aea9f011f651baa98' "$DATA_DIR/admins.sqlite" | sha256sum --check --status || die 'repaired admin database SHA-256 mismatch'
-[[ "$(stat -c '%s' "$DATA_DIR/timezones.sqlite")" == '122478592' ]] || die 'timezone database byte count mismatch'
-printf '%s  %s\n' '7861983249b9165f133f414145e4021fb3e05f18034458ef3b1987faac8a6b87' "$DATA_DIR/timezones.sqlite" | sha256sum --check --status || die 'timezone database SHA-256 mismatch'
-
-[[ "$(stat -c '%s' "$DATA_DIR/$PBF")" == "$EXPECTED_PBF_BYTES" ]] || die 'PBF byte count mismatch'
-printf '%s  %s\n' "$EXPECTED_PBF_MD5" "$DATA_DIR/$PBF" | md5sum --check --status || die 'PBF MD5 mismatch'
-printf '%s  %s\n' "$EXPECTED_PBF_SHA256" "$DATA_DIR/$PBF" | sha256sum --check --status || die 'PBF SHA-256 mismatch'
+python3 "$SCRIPT_DIR/verify-runtime-files.py" "$DATA_DIR" "$SCRIPT_DIR/data/generation-manifest.json" "$IMAGE"
 security_options="$(docker info --format '{{json .SecurityOptions}}')" || die 'rootless Docker is unavailable'
 printf '%s\n' "$security_options" | python3 -c 'import json, sys; sys.exit("name=rootless" not in json.load(sys.stdin))' || die 'Docker daemon does not report rootless SecurityOptions'
 docker container inspect "$CONTAINER" >/dev/null 2>&1 && die "$CONTAINER already exists"

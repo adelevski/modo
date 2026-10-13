@@ -120,8 +120,10 @@ tests exact static Worker delivery without changing the production design.
 
 The package has a separate private nationwide estimation path. A small provider
 adapter sends route and batched matrix requests to a caller-supplied Valhalla
-endpoint with explicit timeouts, a bounded response size, and a small in-memory
-LRU. It applies an explicit 1 km road-search and snap limit and verifies the
+endpoint with explicit timeouts and a bounded response size. Its response
+cache is disabled by default; an explicit calculation-scoped LRU must be
+cleared when the calculation ends. It applies an explicit 1 km road-search
+and snap limit and verifies the
 snapped coordinates returned by verbose matrices. One locate batch per search
 level removes samples outside that strict road coverage before matrix scoring;
 farther origins fail clearly rather than being silently relocated. Three or
@@ -136,7 +138,8 @@ attempts.
 the origins, keeps only the best anchors, and refines their neighborhoods a
 bounded number of times. The default 81-point, two-refinement budget is
 deliberately coarse; callers can explicitly spend more requests for finer
-sampling. Matrix requests contain at most 40 targets. Both maximum-drive and
+sampling. Matrix requests contain at most 40 targets by default and 2,500
+source-target pairs; larger origin groups shrink the batch. Both maximum-drive and
 total-drive scores reuse the same per-origin matrix values. The output is a finite list of sampled
 coordinates within the requested score tolerance, plus the final sampling
 resolution and request/evaluation counts.
@@ -161,6 +164,14 @@ The private host layout, exact routing pins, measured resource envelope, and
 portable restart/restore checks live in the
 [national routing runbook](private-national-routing-runbook.md). They do not
 change the hosted Chicago service or authorize public routing access.
+
+The intended national topology uses one operator-owned Valhalla engine. Fairway
+imports pinned modo routing/estimation code in its own calculation process;
+an additional modo HTTP service would add a duplicate interface and is not
+part of this topology. The runbook and versioned routing-generation manifest
+are the canonical deployment record. Application transport, admission limits
+and catalog/ranking policy remain in Fairway; personal host inventory and
+credentials remain outside both repositories.
 
 ### Exhaustive-search scale limit
 

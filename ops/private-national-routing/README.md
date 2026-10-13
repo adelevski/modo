@@ -13,6 +13,7 @@ resolve and review a separate immutable digest before any x86-64 test.
 The checked-in files are:
 
 - the exact active `data/valhalla.json` configuration;
+- the canonical `data/generation-manifest.json` and read-only runtime verifier;
 - the dated PBF checksum sidecars and public Geofabrik download script;
 - the ARM64 rootless-Docker launcher;
 - the national-limit and admin-repair maintenance inputs; and
@@ -36,6 +37,15 @@ modified at 02:22:05 UTC, is 20,887,162,880 bytes with SHA-256
 Both files remained unchanged during hashing. The portable manifest mixed
 the rollback size with the active archive hash; use the verified active
 identity above for restore. The launcher rejects the rollback generation.
+
+`data/generation-manifest.json` is the canonical machine-readable release
+record for the image/platform, configuration and runtime file identities.
+The launcher reads its sizes and SHA-256 values through
+`verify-runtime-files.py`; it refuses missing, empty, linked, changed or
+mismatched assets before creating a container. `verified-identities` records
+the established pins, not migration, load or metadata-validation readiness.
+Private host inventory should reference the modo commit and this manifest;
+host paths, credentials and application policy belong to their own operators.
 
 From this directory, verify the PBF before using the launcher:
 
@@ -64,10 +74,23 @@ VALHALLA_URL=http://127.0.0.1:8003 ./verify-national-after-build.sh
 ```
 
 The verifier uses public-coordinate fixtures and makes one bounded 4x3 matrix
-plus four detailed route requests. The admin rebuild script is destructive
-maintenance: it stops the named container, preserves local rollback files,
-repairs the admin database, rebuilds tiles, and restarts the container. Do not
-run it as a verification step. Before stopping anything it verifies the local
-rootless daemon and reads the admin database in read-only mode, refusing an
-existing US parent or a database without state rows. The SQL also skips parent
-insertion if a US parent already exists or there are no state rows.
+plus four detailed route requests.
+
+The admin rebuild script stages maintenance in a new generation. It verifies
+the local rootless daemon and reads the source admin database in read-only
+mode, refusing an existing US parent or a database without state rows. It
+copies the small inputs and snapshots the admin DB into a unique directory
+under `ROUTING_STAGING_ROOT` (default: the source data directory's parent).
+Builders have no network, write only that generation, and mount the source
+PBF read-only. The existing data and routing containers are never stopped,
+renamed or switched. Failures retain the staged directory; normal exit and
+handled signals attempt bounded cleanup of only this build's recorded
+container IDs. SIGKILL or Docker daemon failure still needs operator cleanup.
+
+Successful staging writes `generation-manifest.json` with status
+`staged-unverified`; the source PBF is referenced but not copied. This status
+cannot pass the launcher gate. Supply the verified PBF, validate admin/timezone
+metadata and bounded routes/matrices, then review and pin the complete new
+release before a separately approved replacement/switch. The helper does
+not promote it. Build resource/disk approval is required even though serving
+data is preserved. Do not run it as a verification step.

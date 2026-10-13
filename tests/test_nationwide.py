@@ -343,3 +343,36 @@ def test_origin_outside_lower_48_fails_before_provider_call():
     ):
         NationwideEstimator(provider).estimate([(61.2181, -149.9003), (41, -87)])
     assert provider.calls == []
+
+
+def test_large_origin_group_uses_origin_aware_matrix_batches():
+    provider = PlaneProvider()
+    origins = [(41 + index * 0.0001, -87) for index in range(63)]
+    result = NationwideEstimator(provider, coarse_candidate_limit=81).estimate(origins)
+    assert result.approximate
+    assert provider.calls
+    assert all(
+        len(sources) * len(targets) <= 2500 for sources, targets in provider.calls
+    )
+    assert max(len(targets) for _, targets in provider.calls) == 39
+
+
+def test_estimator_respects_smaller_provider_pair_limit():
+    provider = PlaneProvider()
+    provider.max_matrix_pairs = 6
+    result = NationwideEstimator(
+        provider, coarse_candidate_limit=9, refinement_rounds=0
+    ).estimate([(41, -90), (41, -88), (41, -86)])
+    assert result.approximate
+    assert all(len(sources) * len(targets) <= 6 for sources, targets in provider.calls)
+
+
+def test_excessive_origins_fail_before_prefilter_or_matrix():
+    provider = PrefilteringPlaneProvider()
+    with pytest.raises(
+        ValueError, match="origin count exceeds matrix pair limit \\(2\\)"
+    ):
+        NationwideEstimator(provider, matrix_pair_limit=2).estimate(
+            [(41, -90), (41, -88), (41, -86)]
+        )
+    assert provider.calls == provider.prefilter_calls == []

@@ -52,7 +52,7 @@ def test_valhalla_matrix_parses_rows_and_caches_identical_request():
         )
 
     provider = ValhallaHTTPProvider(
-        "http://router.test/", timeout_seconds=3, opener=opener
+        "http://router.test/", timeout_seconds=3, cache_size=128, opener=opener
     )
     origins = [(41.0, -87.0), (42.0, -88.0)]
     targets = [(41.5, -87.5), (41.6, -87.6)]
@@ -232,3 +232,122 @@ def test_valhalla_no_suitable_edges_is_a_coverage_error():
         provider.matrix([(41, -87)], [(42, -88)])
     assert provider.request_count == 1
     assert provider.successful_request_count == 0
+
+
+@pytest.mark.parametrize("field", ["from_index", "to_index"])
+@pytest.mark.parametrize("bad_index", [-1, 0.5, 0.0, True, False, "0", None, 2])
+def test_flat_matrix_rejects_invalid_indexes(field, bad_index):
+    cells = [
+        {"from_index": source, "to_index": target, "time": None}
+        for source in range(2)
+        for target in range(2)
+    ]
+    cells[0][field] = bad_index
+    provider = ValhallaHTTPProvider(
+        "http://router.test",
+        opener=lambda *_args, **_kwargs: Response(
+            json.dumps({"sources_to_targets": cells}).encode()
+        ),
+    )
+    with pytest.raises(RoutingProviderError, match="invalid indexes"):
+        provider.matrix([(41, -87), (42, -88)], [(41, -87), (42, -88)])
+
+
+@pytest.mark.parametrize(
+    "cells,message",
+    [
+        ([{"from_index": 0, "to_index": 0, "time": None}], "incomplete"),
+        (
+            [{"from_index": 0, "to_index": 0, "time": None}] * 2,
+            "duplicate cells",
+        ),
+        ([{"to_index": 0, "time": None}], "invalid indexes"),
+    ],
+)
+def test_flat_matrix_requires_each_pair_exactly_once(cells, message):
+    provider = ValhallaHTTPProvider(
+        "http://router.test",
+        opener=lambda *_args, **_kwargs: Response(
+            json.dumps({"sources_to_targets": cells}).encode()
+        ),
+    )
+    with pytest.raises(RoutingProviderError, match=message):
+        provider.matrix([(41, -87), (42, -88)], [(41, -87)])
+
+
+@pytest.mark.parametrize("bad_index", [-1, 1, 0.0, True, "0"])
+def test_nested_matrix_rejects_indexes_that_do_not_match_position(bad_index):
+    provider = ValhallaHTTPProvider(
+        "http://router.test",
+        opener=lambda *_args, **_kwargs: Response(
+            json.dumps(
+                {
+                    "sources_to_targets": [
+                        [{"from_index": bad_index, "to_index": 0, "time": None}]
+                    ]
+                }
+            ).encode()
+        ),
+    )
+    with pytest.raises(RoutingProviderError, match="invalid indexes"):
+        provider.matrix([(41, -87)], [(41, -87)])
+
+
+@pytest.mark.parametrize("cell", [None, {}, {"distance": None}])
+def test_missing_matrix_cell_is_not_misclassified_as_unreachable(cell):
+    provider = ValhallaHTTPProvider(
+        "http://router.test",
+        opener=lambda *_args, **_kwargs: Response(
+            json.dumps({"sources_to_targets": [[cell]]}).encode()
+        ),
+    )
+    with pytest.raises(RoutingProviderError, match="cell is invalid"):
+        provider.matrix([(41, -87)], [(41, -87)])
+
+
+def test_matrix_pair_limit_fails_before_transport():
+    calls = []
+    provider = ValhallaHTTPProvider(
+        "http://router.test",
+        max_matrix_pairs=3,
+        opener=lambda *args: calls.append(args),
+    )
+    with pytest.raises(ValueError, match="max_matrix_pairs \\(3\\)"):
+        provider.matrix([(41, -87), (42, -88)], [(41, -87), (42, -88)])
+    assert calls == []
+    assert provider.request_count == 0
+
+
+def test_default_provider_retains_no_responses_or_request_coordinates():
+    calls = []
+
+    def opener(request, timeout):
+        calls.append(request)
+        return Response(b'{"sources_to_targets":[[{"time":null}]]}')
+
+    provider = ValhallaHTTPProvider("http://router.test", opener=opener)
+    for _ in range(2):
+        assert provider.matrix([(41, -87)], [(41, -87)]) == ((None,),)
+    assert len(calls) == provider.request_count == 2
+    assert not provider._cache
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_explicit_calculation_cache_is_cleared_on_exit(fail):
+    provider = ValhallaHTTPProvider(
+        "http://router.test",
+        cache_size=2,
+        opener=lambda *_args, **_kwargs: Response(
+            b'{"sources_to_targets":[[{"time":null}]]}'
+        ),
+    )
+    try:
+        with provider:
+            provider.matrix([(41, -87)], [(41, -87)])
+            provider.matrix([(41, -87)], [(41, -87)])
+            assert provider.request_count == 1
+            if fail:
+                raise RuntimeError("synthetic calculation failure")
+    except RuntimeError:
+        assert fail
+    assert not provider._cache
