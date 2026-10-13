@@ -1,0 +1,6 @@
+Contains information from OpenStreetMap, available under the Open Database License (ODbL) 1.0.
+© OpenStreetMap contributors - https://www.openstreetmap.org/copyright
+
+This derived layer preserves OSM object identifiers, versions, timestamps, tags, and source geometries.
+It must remain attributed and is subject to the ODbL when publicly used or redistributed as a database.
+OSM tags do not establish public access, public play, operating status, entrance location, or catalog identity.
