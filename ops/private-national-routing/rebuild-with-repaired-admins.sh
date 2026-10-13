@@ -62,11 +62,34 @@ available="$(df --output=avail -B1 "$STAGING_ROOT" | tail -1 | tr -d ' ')"
 (( available >= 250000000000 )) || die 'need at least 250 GB free for a separate build generation'
 
 # Staging implementation.
+stop_build_client() {
+  local attempt
+  kill -- "$build_client" 2>/dev/null || true
+  for attempt in {1..20}; do
+    kill -0 -- "$build_client" 2>/dev/null || break
+    sleep 0.1
+  done
+  if kill -0 -- "$build_client" 2>/dev/null; then
+    kill -KILL -- "$build_client" 2>/dev/null || true
+    for attempt in {1..10}; do
+      kill -0 -- "$build_client" 2>/dev/null || break
+      sleep 0.1
+    done
+  fi
+  if kill -0 -- "$build_client" 2>/dev/null; then
+    printf 'Builder client did not exit after KILL; operator cleanup required.\n' >&2
+  else
+    # Reap only after exit: an uninterruptible client must not block cleanup.
+    wait "$build_client" 2>/dev/null || true
+  fi
+  build_client=''
+}
+
 cleanup_staged_build() {
   local result="$1"
+  trap '' INT TERM
   if [[ -n "${build_client:-}" ]]; then
-    kill -- "$build_client" 2>/dev/null || true
-    wait "$build_client" 2>/dev/null || true
+    stop_build_client
   fi
   # Remove only IDs recorded by this invocation, never a pre-existing name.
   local cid_file cid
@@ -74,7 +97,7 @@ cleanup_staged_build() {
     [[ -s "$cid_file" ]] || continue
     IFS= read -r cid < "$cid_file" || true
     [[ "$cid" =~ ^[0-9a-f]{64}$ ]] || continue
-    timeout 10s docker rm -f -- "$cid" >/dev/null 2>&1 || true
+    timeout --kill-after=2s 10s docker rm -f -- "$cid" >/dev/null 2>&1 || true
   done
   if (( result != 0 )); then
     printf 'Build failed; active data and service state were untouched. Staging retained at %s\n' "$stage" >&2

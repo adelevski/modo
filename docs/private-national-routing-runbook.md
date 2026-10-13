@@ -69,9 +69,12 @@ readiness. The machine-readable record and this runbook are the shared routing
 reference; a private host inventory should link to their modo commit rather
 than duplicate pins or put personal paths and credentials here.
 
-Fairway owns its API transport, admission/deadline policy, reviewed course
-arrivals and ranking, and imports a pinned modo library. Use one shared national
-Valhalla engine; an additional modo HTTP service is not required for that call
+Fairway owns its API transport, admission/deadline policy, catalog destination
+selection/property pins and ranking, and imports a pinned modo library. Property
+pins are approximate routing inputs; optional destination exceptions can
+override a pin without requiring a separate arrival-verification workflow.
+Use one shared national Valhalla engine; an additional modo HTTP service is not
+required for that call
 path. Private application-network configuration and host-wide resource
 allocation belong to the operator and require their own deployment validation.
 Other existing regional engines must have their consumers and rollback role
@@ -80,9 +83,12 @@ established before any separately approved retirement.
 `rebuild-with-repaired-admins.sh` now produces a separate staged generation.
 It never stops the serving container or rewrites/moves active data. A failed
 or interrupted build leaves active data and service state intact and attempts
-bounded cleanup only of recorded builder container IDs. Its candidate manifest
-is `staged-unverified`, so it cannot pass the launcher until the full release
-is supplied, metadata and routes/matrices validated, and new pins reviewed.
+bounded cleanup only of recorded builder container IDs. Client termination
+allows two seconds after TERM and one second after KILL, then reports any
+remaining client instead of waiting indefinitely. Each container removal times
+out after ten seconds and escalates to KILL two seconds later. Its candidate
+manifest is `staged-unverified`, so it cannot pass the launcher until the full
+release is supplied, metadata and routes/matrices validated, and new pins reviewed.
 No promotion or cutover is automatic. SIGKILL or an unavailable Docker daemon
 still requires operator cleanup of the isolated builders; resource/disk
 approval and immutable source inputs are prerequisites for staging.

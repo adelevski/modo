@@ -85,7 +85,10 @@ Builders have no network, write only that generation, and mount the source
 PBF read-only. The existing data and routing containers are never stopped,
 renamed or switched. Failures retain the staged directory; normal exit and
 handled signals attempt bounded cleanup of only this build's recorded
-container IDs. SIGKILL or Docker daemon failure still needs operator cleanup.
+container IDs. Client termination waits up to two seconds after TERM, escalates
+to KILL, then waits up to one second before reporting a surviving client. Each
+container removal times out after ten seconds and escalates to KILL two seconds
+later. SIGKILL or Docker daemon failure still needs operator cleanup.
 
 Successful staging writes `generation-manifest.json` with status
 `staged-unverified`; the source PBF is referenced but not copied. This status

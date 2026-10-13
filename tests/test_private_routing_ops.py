@@ -96,7 +96,7 @@ def test_repair_database_preflight_is_read_only(tmp_path, states, existing_paren
 
 
 FAKE_DOCKER = """
-import hashlib, json, os, pathlib, sqlite3, sys, time
+import hashlib, json, os, pathlib, signal, sqlite3, sys, time
 args = sys.argv[1:]
 with open(os.environ["DOCKER_CALLS"], "a") as stream:
     stream.write(json.dumps(args) + "\\n")
@@ -119,7 +119,9 @@ if phase == "spatialite":
         db.execute("INSERT INTO admins (admin_level, iso_code) VALUES (2, 'US')")
         db.execute("UPDATE admins SET parent_admin = (SELECT rowid FROM admins WHERE admin_level = 2) WHERE admin_level = 4")
 elif phase == "valhalla_build_tiles":
-    if failure == "signal":
+    if failure in {"signal", "ignore-term"}:
+        if failure == "ignore-term":
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
         pathlib.Path(os.environ["BUILD_CLIENT_PID"]).write_text(str(os.getpid()))
         time.sleep(60)
     (stage / "valhalla_tiles").mkdir()
@@ -255,11 +257,12 @@ def test_admin_rebuild_stages_without_mutating_the_active_release(
             assert asset["sha256"] == hashlib.sha256(raw).hexdigest()
 
 
-def test_staged_rebuild_terminates_its_client_on_sigterm(staged_build):
+@pytest.mark.parametrize("failure", ["signal", "ignore-term"])
+def test_staged_rebuild_terminates_its_client_on_sigterm(staged_build, failure):
     source, before, _, calls, client_pid, env, command = staged_build
     process = subprocess.Popen(
         command,
-        env={**env, "BUILD_FAILURE": "signal"},
+        env={**env, "BUILD_FAILURE": failure},
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -279,7 +282,11 @@ def test_staged_rebuild_terminates_its_client_on_sigterm(staged_build):
         assert process.returncode == 143, stderr
         with pytest.raises(ProcessLookupError):
             os.kill(int(client_pid.read_text()), 0)
-        assert_active_release_preserved(source, before, calls)
+        commands = assert_active_release_preserved(source, before, calls)
+        assert {call[-1] for call in commands if call[0] == "rm"} == {
+            hashlib.sha256(phase.encode()).hexdigest()
+            for phase in ["spatialite", "valhalla_build_tiles"]
+        }
     finally:
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
