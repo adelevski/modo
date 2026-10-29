@@ -1,8 +1,0 @@
-[project]
-name = "modo-scipy-1-12-ci"
-version = "0"
-requires-python = ">=3.11,<3.12"
-dependencies = ["modo[test]", "scipy>=1.12,<1.13"]
-
-[tool.uv.sources]
-modo = {path = "../..", editable = true}

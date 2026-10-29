@@ -1,7 +1,6 @@
 .venv/
 .env
 .env.*
-!.env.example
 .uv-cache/
 __pycache__/
 *.egg-info/

@@ -7,7 +7,7 @@ APIs may retain other objectives, and experiments are not production.
 ## Scope and sources
 
 - Read `README.md` for setup, `docs/model.md` for mathematical contracts,
-  `docs/architecture.md` for boundaries, and `SERVICE.md` for the hosted policy.
+  and `SERVICE.md` for the hosted policy.
 - Read the [snowball principles](https://snowball-projects.github.io/principles/)
   before public claims or product, data and architecture decisions. Keep the
   simplest reliable design; measure before adding infrastructure.
@@ -33,7 +33,7 @@ APIs may retain other objectives, and experiments are not production.
 ## Data and privacy
 
 - Never commit or print `.env` values, credentials, personal locations or
-  benchmark results. Keep `.env.example` to empty variable declarations.
+  benchmark results.
 - No accounts, analytics, advertising or stored origin coordinates. Document
   provider disclosures and limits before introducing an external service.
 - Do not run bulk provider calls or expand paid infrastructure without an
@@ -41,7 +41,7 @@ APIs may retain other objectives, and experiments are not production.
 
 ## Publication
 
-- `.github/workflows/ci.yml` defines the supported runtime and SciPy-floor
+- `.github/workflows/ci.yml` defines the supported runtime
   checks; `render.yaml` defines deployment. Keep runtime pins and lockfiles
   consistent.
 - Verify the workflow and the live service before claiming publication. Do not
@@ -51,7 +51,7 @@ APIs may retain other objectives, and experiments are not production.
 
 - Write `modo` in lowercase. Do not change product direction by assumption.
 - Original software is MIT. Preserve the separate road-data and Leaflet
-  notices; `LICENSE`, `THIRD-PARTY-NOTICES.md` and `CONTRIBUTING.md` are authoritative.
+  notices; `LICENSE` and `THIRD-PARTY-NOTICES.md` are authoritative.
 - Do not add AI-builder labels or production credits to public copy.
 - Use regular hyphens instead of em dashes. Keep public copy terse and honest.
 - `CLAUDE.md` imports this file. Keep operational detail in docs rather than

@@ -1,9 +1,7 @@
-include AGENTS.md CLAUDE.md CHANGELOG.md CONTRIBUTING.md SERVICE.md render.yaml uv.lock .env.example
+include AGENTS.md CLAUDE.md SERVICE.md render.yaml uv.lock
 recursive-include docs *.md
-include docs/icon.png
 include data/README.md
 recursive-include scripts *.py
 recursive-include experiments *.py *.js *.mjs *.html *.md *.json
 prune experiments/browser-routing/site/generated
-prune experiments/routing_engines/results
 global-exclude __pycache__ *.py[cod]

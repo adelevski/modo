@@ -7,8 +7,8 @@ of the optimum.
 
 The current interface uses a static Chicago-area snapshot without traffic. Its
 points are neither venue recommendations nor assurances of a safe stopping
-place. See the [model](docs/model.md), [architecture](docs/architecture.md), and
-[service policy](SERVICE.md) for calculation, data, and privacy details.
+place. See the [model](docs/model.md) and [service policy](SERVICE.md) for
+calculation, data, and privacy details.
 
 ## Run
 
@@ -29,8 +29,7 @@ snapshot catalog.
 
 ## Python library
 
-The app is minimax-only. The package also supports total-time road results and
-general geographic centers.
+The app is minimax-only. The package also supports total-time road results.
 
 ```python
 from modo import CompactRoadGraph
@@ -49,62 +48,6 @@ NetworkX backend exposes the same contracts, and compact analysis accepts
 also pass `objective="maximum"` to omit total-time scoring arrays. Exact
 semantics are in the [mathematical model](docs/model.md).
 
-### Private nationwide estimation
-
-The library also has an intentionally approximate provider path for private
-lower-48 experiments. It leaves routing to Valhalla and samples a bounded,
-coarse-to-fine set of candidate coordinates instead of loading a national road
-graph or routing every facility:
-
-```python
-from modo import NationwideEstimator, ValhallaHTTPProvider
-
-provider = ValhallaHTTPProvider("http://127.0.0.1:8003", timeout_seconds=10)
-estimate = NationwideEstimator(provider).estimate(
-    origin_coordinates,
-    objective="maximum",  # or "total"
-)
-areas = estimate.promising_candidates(
-    limit=8,
-    catchment_radius_kilometers=80,
-)
-```
-
-`estimate.approximate` is always true. Its finite `candidates` contain sampled
-coordinates, scores, per-origin travel times, and excess above the best sample.
-`final_resolution_km`, `evaluated_candidates`, `prefilter_requests`, and
-`matrix_requests` describe the search budget. The Valhalla adapter's
-`request_count` counts every cold network attempt, while
-`successful_request_count` excludes rejected/error responses. This is not a
-global optimum or a complete road-vertex region. The caller remains responsible
-for operating and authorizing its provider and for further venue or facility
-ranking.
-
-The provider limits road snapping and road search to 1 km. Each bounded search
-level uses one batched locate prefilter before matrix scoring, so a farther
-snapped origin or sample fails instead of being silently scored at a distant
-road. The coarse search also omits grid points outside an expanded convex hull
-of three or more origins; the origins themselves and mean seed are always
-retained. The catchment radius passed to `promising_candidates` is separate
-operational policy for a downstream catalog search; it is not optimizer
-resolution or guaranteed optimal-road coverage.
-
-Matrix batches also respect a default 2,500 source-target pair limit: the
-target batch shrinks for larger origin groups, and an origin count that cannot
-fit one target fails locally before provider calls. `matrix_pair_limit` on the
-estimator and `max_matrix_pairs` on the Valhalla adapter can select a smaller
-budget; the estimator honors both.
-
-Provider response caching defaults to `cache_size=0`, including for a shared
-provider. An explicit positive cache retains coordinates and responses for
-its lifetime and belongs to one calculation. Use a provider context manager
-or `clear_cache()` when that calculation ends, including error paths. Fairway's
-private API already constructs a cache-disabled provider per request.
-
-The current private shared-Valhalla topology, pinned graph inputs, measured
-resource envelope, restart/restore procedure, and cross-architecture gates are
-recorded in the [national routing runbook](docs/private-national-routing-runbook.md).
-
 ## Checks
 
 ```sh
@@ -118,27 +61,11 @@ uv run --locked python scripts/validate_snapshot.py
 Tests use synthetic fixtures and require no geographic data or external services.
 The browser experiment also requires Node.js 24 or newer.
 
-## Icon
-
-[docs/icon.png](docs/icon.png) is the approved folded-map source. Keep that
-image when iterating; regenerate the two small browser assets after replacing
-it. On macOS, from the repository root:
-
-```sh
-sips -z 180 180 docs/icon.png --out src/modo/static/icon.png
-sips -z 32 32 docs/icon.png --out src/modo/static/favicon.png
-```
-
-The 180px image serves both the header and saved home-screen shortcut. The
-32px image is the favicon. Copy the full-resolution source to the catalog's
-website project image when updating it there.
-
 ## License
 
 modo is licensed under the [MIT License](LICENSE).
 The road snapshot is separately licensed under the Open Database License, and
 the local Leaflet assets remain BSD-2-Clause. See
-[data notes](data/README.md), [third-party notices](THIRD-PARTY-NOTICES.md),
-[contribution terms](CONTRIBUTING.md), and the
+[data notes](data/README.md), [third-party notices](THIRD-PARTY-NOTICES.md), and the
 [Leaflet license](src/modo/static/LEAFLET-LICENSE.txt).
 
