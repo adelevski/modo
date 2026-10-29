@@ -41,7 +41,7 @@ APIs may retain other objectives, and experiments are not production.
 
 ## Publication
 
-- `.github/workflows/ci.yml` defines the supported runtime and SciPy-floor
+- `.github/workflows/ci.yml` defines the supported runtime
   checks; `render.yaml` defines deployment. Keep runtime pins and lockfiles
   consistent.
 - Verify the workflow and the live service before claiming publication. Do not
